@@ -88,7 +88,7 @@ export function CatCard({ cat, index }: CatCardProps) {
 
             {/* Personality tags */}
             <div className="flex gap-1 mt-3 flex-wrap">
-              {cat.personality.map((tag) => (
+              {(cat.personality ?? []).map((tag) => (
                 <span
                   key={tag}
                   className="px-2 py-0.5 rounded-full text-xs"

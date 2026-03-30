@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useApp } from "../context/AppContext";
 import { NFTWelcomeModal } from "./NFTWelcomeModal";
@@ -14,9 +14,9 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }
 const GENDER_LABEL = { male: "♂ 公猫", female: "♀ 母猫" };
 
 export function Dashboard() {
-  const { user, cats, nftClaimed, walletConnected } = useApp();
+  const { nftClaimed, isConnected } = useApp();
   const navigate = useNavigate();
-  const [showModal, setShowModal] = useState(!nftClaimed && walletConnected === false ? true : !nftClaimed);
+  const [showModal, setShowModal] = useState(!nftClaimed && isConnected);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
 

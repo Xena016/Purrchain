@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState, useEffect } from "react";
 import { X, Gift, Coins, Heart, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { useApp } from "../context/AppContext";
@@ -8,27 +8,37 @@ interface WelcomeNFTModalProps {
 }
 
 export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
-  const { claimNFT, claimPURR, purrClaimed, nftClaimed } = useApp();
+  const { claimFamilyPortrait, claimWelcomeTokens, welcomeClaimed, nftClaimed } = useApp();
   const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (nftClaimed && step === 0) setStep(1);
+    if (welcomeClaimed && step <= 1) setStep(2);
+  }, [nftClaimed, welcomeClaimed]);
   const [nftAnimating, setNftAnimating] = useState(false);
   const [purrAnimating, setPurrAnimating] = useState(false);
 
-  const handleClaimNFT = () => {
+  const handleClaimNFT = async () => {
     setNftAnimating(true);
-    setTimeout(() => {
-      claimNFT();
-      setNftAnimating(false);
+    try {
+      await claimFamilyPortrait();
       setStep(1);
-    }, 1000);
+    } catch {
+      // error handled in AppContext
+    } finally {
+      setNftAnimating(false);
+    }
   };
 
-  const handleClaimPURR = () => {
+  const handleClaimPURR = async () => {
     setPurrAnimating(true);
-    setTimeout(() => {
-      claimPURR();
-      setPurrAnimating(false);
+    try {
+      await claimWelcomeTokens();
       setStep(2);
-    }, 800);
+    } catch {
+      // error handled in AppContext
+    } finally {
+      setPurrAnimating(false);
+    }
   };
 
   return (
@@ -52,7 +62,7 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
         <button
           onClick={onClose}
           className="absolute top-4 right-4 z-10 p-2 rounded-full"
-          style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)" }}
+          style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)", cursor: "pointer" }}
         >
           <X size={16} />
         </button>
@@ -85,8 +95,6 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
               </div>
               <div className="text-xs mt-1" style={{ color: "#06B6D4" }}>每个钱包地址仅限一枚</div>
             </div>
-
-            {/* Animated shimmer */}
             {nftAnimating && (
               <div
                 className="absolute inset-0 animate-pulse"
@@ -95,6 +103,7 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
             )}
           </div>
 
+          {/* Step 0: 领取 NFT */}
           {step === 0 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
               <h2 className="text-center mb-2" style={{ color: "#fff", fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -104,7 +113,6 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
                 领取当季猫咪全家福 NFT，开始你的爱猫之旅
               </p>
 
-              {/* Why help cats */}
               <div className="rounded-2xl p-4 mb-4" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
                 <div className="flex items-center gap-2 mb-2">
                   <Heart size={14} className="text-rose-400" />
@@ -131,14 +139,16 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
                   boxShadow: nftClaimed ? "none" : "0 0 30px rgba(124,58,237,0.5)",
                   fontFamily: "'Nunito', sans-serif",
                   cursor: nftClaimed ? "default" : "pointer",
+                  opacity: nftAnimating ? 0.7 : 1,
                 }}
               >
                 <Gift size={16} />
-                {nftAnimating ? "领取中..." : nftClaimed ? "已领取" : "免费领取全家福 NFT"}
+                {nftAnimating ? "链上确认中..." : nftClaimed ? "已领取" : "免费领取全家福 NFT"}
               </button>
             </motion.div>
           )}
 
+          {/* Step 1: 领取 PURR */}
           {step === 1 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
               <h2 className="text-center mb-2" style={{ color: "#fff", fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -168,21 +178,23 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
 
               <button
                 onClick={handleClaimPURR}
-                disabled={purrClaimed || purrAnimating}
+                disabled={welcomeClaimed || purrAnimating}
                 className="w-full py-3 rounded-2xl text-white flex items-center justify-center gap-2 transition-all"
                 style={{
-                  background: purrClaimed ? "rgba(255,255,255,0.1)" : "linear-gradient(135deg, #D97706, #F59E0B)",
-                  boxShadow: purrClaimed ? "none" : "0 0 30px rgba(245,158,11,0.4)",
+                  background: welcomeClaimed ? "rgba(255,255,255,0.1)" : "linear-gradient(135deg, #D97706, #F59E0B)",
+                  boxShadow: welcomeClaimed ? "none" : "0 0 30px rgba(245,158,11,0.4)",
                   fontFamily: "'Nunito', sans-serif",
-                  cursor: purrClaimed ? "default" : "pointer",
+                  cursor: welcomeClaimed ? "default" : "pointer",
+                  opacity: purrAnimating ? 0.7 : 1,
                 }}
               >
                 <Coins size={16} />
-                {purrAnimating ? "领取中..." : purrClaimed ? "已领取" : "领取 20 $PURR"}
+                {purrAnimating ? "链上确认中..." : welcomeClaimed ? "已领取" : "领取 20 $PURR"}
               </button>
             </motion.div>
           )}
 
+          {/* Step 2: 完成 */}
           {step === 2 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center">
               <div className="text-4xl mb-3">🐾</div>
@@ -199,6 +211,7 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
                   background: "linear-gradient(135deg, #7C3AED, #06B6D4)",
                   boxShadow: "0 0 30px rgba(124,58,237,0.4)",
                   fontFamily: "'Nunito', sans-serif",
+                  cursor: "pointer",
                 }}
               >
                 浏览猫咪档案 →
