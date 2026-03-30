@@ -24,10 +24,10 @@ interface AppContextType {
   disconnectWallet: () => void;
 
   // 链上资产状态
-  purrBalance: string;           // 格式化后的 PURR 余额（整数字符串）
-  purrBalanceRaw: bigint;        // 原始 wei
+  purrBalance: string;
+  purrBalanceRaw: bigint;
   nftClaimed: boolean;           // 是否已领全家福 NFT
-  familyPortraitTokenId: number | null; // 全家福 NFT 的 tokenId（领取后用于领 PURR）
+  familyPortraitTokenId: number | null;
   welcomeClaimed: boolean;       // 是否已领 20 PURR 欢迎奖励
   starterCatClaimed: boolean;    // 是否已领免费初始猫
   starterCatId: number | null;   // 初始猫对应的真实猫 ID (CatRegistry id)
@@ -82,68 +82,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         purr,
         portraitClaimed,
         welcome,
-        starterClaimed,
+        scClaimed,
       ] = await Promise.all([
         c.purrToken.balanceOf(address),
         c.catNFT.hasClaimedFamilyPortrait(address),
         c.purrToken.hasClaimedWelcome(address),
-        c.catNFT.hasClaimedFamilyPortrait(address), // starterCat 在 catNFT 里
+        c.catNFT.hasClaimedStarterCat(address),  // 修复：正确调用 CatNFT 合约的函数
       ]);
 
       setPurrBalanceRaw(purr as bigint);
       setNftClaimed(portraitClaimed as boolean);
       setWelcomeClaimed(welcome as boolean);
+      setStarterCatClaimed(scClaimed as boolean);
 
-      // 检查是否已领免费初始猫（GameContract.hasClaimedStarterCat）
-      // 用只读合约查
-      const gc = getReadonlyContracts();
-      // hasClaimedStarterCat 在 CatNFT 合约
-      const scClaimed = await gc.catNFT.hasClaimedFamilyPortrait(address); // placeholder
-      // 实际调用 GameContract 的 hasClaimedStarterCat —— 但 ABI 里没有，
-      // 改从 catNFT.hasClaimedStarterCat 读（这个函数在 catNFT 合约里）
-      // 需要直接调用：
-      const provider = gc.catNFT.runner?.provider;
-      if (provider) {
-        const catNFTContract = new ethers.Contract(
-          await gc.catNFT.getAddress(),
-          ["function hasClaimedStarterCat(address) view returns (bool)",
-           "function starterCatOf(address) view returns (uint256)"],
-          provider
-        );
-        const [claimed, catOf] = await Promise.all([
-          catNFTContract.hasClaimedStarterCat(address),
-          catNFTContract.starterCatOf(address),
-        ]);
-        setStarterCatClaimed(claimed as boolean);
-        if (claimed) setStarterCatId(Number(catOf));
+      // 如果已领初始猫，读取对应的真实猫 ID
+      if (scClaimed) {
+        const catOf = await c.catNFT.starterCatOf(address);
+        setStarterCatId(Number(catOf));
       }
 
-      // 如果已领全家福 NFT，尝试找到 tokenId（用于 claimWelcomeTokens）
+      // 如果已领全家福 NFT，找到对应的 tokenId（用于 claimWelcomeTokens）
       if (portraitClaimed) {
-        // 通过遍历找到属于该用户的 FamilyPortrait NFT
-        // 简化：从 totalSupply 往前找，找到第一个该用户持有的 type=3 NFT
-        try {
-          const total = await c.catNFT.totalSupply();
-          const totalNum = Number(total);
-          // 从最新的往前找，最多找 50 个
-          const searchLimit = Math.min(totalNum, 50);
-          for (let i = totalNum - 1; i >= totalNum - searchLimit; i--) {
-            try {
-              const owner = await c.catNFT.ownerOf(i);
-              if ((owner as string).toLowerCase() === address.toLowerCase()) {
-                const info = await c.catNFT.nftInfo(i);
-                if (Number((info as { nftType: unknown }).nftType) === 3) {
-                  setFamilyPortraitTokenId(i);
-                  break;
-                }
-              }
-            } catch {
-              // token 不存在，继续
-            }
-          }
-        } catch {
-          // 查找失败不影响主流程
-        }
+        await findFamilyPortraitTokenId(address, c);
       }
     } catch (err) {
       console.error("加载用户状态失败:", err);
@@ -151,6 +111,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
     }
   }, []);
+
+  // 找到用户持有的全家福 NFT tokenId
+  // 策略：从最新 tokenId 往前找，找到第一个该用户持有且 type=3 的 NFT
+  const findFamilyPortraitTokenId = async (
+    address: string,
+    c: ReturnType<typeof getReadonlyContracts>
+  ) => {
+    try {
+      const total = await c.catNFT.totalSupply();
+      const totalNum = Number(total);
+      // 最多往前找 200 个（测试网 supply 很小，够用）
+      const searchLimit = Math.min(totalNum, 200);
+      for (let i = totalNum - 1; i >= totalNum - searchLimit; i--) {
+        try {
+          const owner = await c.catNFT.ownerOf(i);
+          if ((owner as string).toLowerCase() !== address.toLowerCase()) continue;
+          const info = await c.catNFT.nftInfo(i);
+          if (Number((info as { nftType: unknown }).nftType) === 3) {
+            setFamilyPortraitTokenId(i);
+            return;
+          }
+        } catch {
+          // token 不存在，继续
+        }
+      }
+    } catch (err) {
+      console.error("查找全家福 tokenId 失败:", err);
+    }
+  };
 
   // ── 连接钱包 ─────────────────────────────────────────────
 
@@ -214,15 +203,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const tx = await c.catNFT.claimFamilyPortrait();
       await (tx as ethers.ContractTransactionResponse).wait();
       setNftClaimed(true);
-      // 等链上确认后重新加载状态
       await loadUserState(walletAddress);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "领取失败";
       if (msg.includes("already claimed")) {
         setError("每个地址只能领取一次全家福 NFT");
-      } else if (msg.includes("user rejected")) {
-        // 用户取消，不显示错误
-      } else {
+      } else if (!msg.includes("user rejected")) {
         setError(`领取全家福 NFT 失败：${msg.slice(0, 80)}`);
       }
     } finally {

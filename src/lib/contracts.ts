@@ -43,13 +43,15 @@ export const CAT_REGISTRY_ABI = [
 export const CAT_NFT_ABI = [
   "function claimFamilyPortrait() external",
   "function hasClaimedFamilyPortrait(address) view returns (bool)",
+  // StarterCat 相关 — 这两个函数在 CatNFT 合约里
+  "function hasClaimedStarterCat(address) view returns (bool)",
+  "function starterCatOf(address) view returns (uint256)",
+  // NFT 查询
   "function getUserCatTokenIds(address _user, uint256 _realCatId) view returns (uint256[3])",
   "function userCatStage(address, uint256) view returns (uint8)",
   "function nftInfo(uint256) view returns (uint8 nftType, uint256 linkedRealCatId, uint8 stage, uint8 season, uint32 seriesId, string tokenURIValue)",
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function balanceOf(address owner) view returns (uint256)",
-  // 查询用户持有的 tokenId 需要遍历，用 totalSupply + ownerOf 或监听事件
-  // 这里提供 totalSupply 供前端遍历用
   "function totalSupply() view returns (uint256)",
 ] as const;
 
@@ -76,9 +78,8 @@ export const ADOPTION_VAULT_ABI = [
 ] as const;
 
 export const GAME_CONTRACT_ABI = [
-  // 新用户
+  // 新用户（claimStarterCat 在 GameContract，hasClaimedStarterCat 在 CatNFT）
   "function claimStarterCat(uint256 _realCatId) external",
-  "function hasClaimedStarterCat(address) view returns (bool)", // 注意：此函数在 CatNFT 合约，这里备注
   // 体力
   "function staminaOf(address player) view returns (uint8)",
   "function buyStamina(uint8 amount) external",
