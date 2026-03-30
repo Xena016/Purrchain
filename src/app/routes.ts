@@ -4,6 +4,7 @@ import { InstitutionRegister } from "./pages/InstitutionRegister";
 import { Dashboard } from "./pages/Dashboard";
 import { CatDetail } from "./pages/CatDetail";
 import { Game } from "./pages/Game";
+import { Gacha } from "./pages/Gacha";
 
 export const router = createBrowserRouter([
   {
@@ -25,5 +26,9 @@ export const router = createBrowserRouter([
   {
     path: "/game/:catId",
     Component: Game,
+  },
+  {
+    path: "/gacha",
+    Component: Gacha,
   },
 ]);
