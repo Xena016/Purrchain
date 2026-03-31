@@ -1,10 +1,11 @@
-import { createBrowserRouter } from "react-router";
+﻿import { createBrowserRouter } from "react-router";
 import { Landing } from "./pages/Landing";
 import { InstitutionRegister } from "./pages/InstitutionRegister";
 import { Dashboard } from "./pages/Dashboard";
 import { CatDetail } from "./pages/CatDetail";
 import { Game } from "./pages/Game";
 import { Gacha } from "./pages/Gacha";
+import { AdminPage } from "./pages/AdminPage";
 
 export const router = createBrowserRouter([
   {
@@ -30,5 +31,9 @@ export const router = createBrowserRouter([
   {
     path: "/gacha",
     Component: Gacha,
+  },
+  {
+    path: "/admin",
+    Component: AdminPage,
   },
 ]);

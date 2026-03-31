@@ -1,4 +1,6 @@
-import { useState } from "react";
+﻿import { useState } from "react";
+import { useApp } from "../context/AppContext";
+import { getContracts } from "../../lib/contracts";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
@@ -24,8 +26,10 @@ interface FormData {
 
 export function InstitutionRegister() {
   const navigate = useNavigate();
+  const { signer, isConnected, connectWallet } = useApp();
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>({
     name: "", location: "", address: "", founded: "", catCapacity: "",
     contactName: "", phone: "", email: "", website: "",
@@ -43,8 +47,20 @@ export function InstitutionRegister() {
     return true;
   };
 
-  const handleSubmit = () => {
-    setSubmitted(true);
+const handleSubmit = async () => {
+    if (!isConnected || !signer) { await connectWallet(); return; }
+    if (!form.name || !form.location) { setSubmitError("请填写机构名称和所在城市"); return; }
+    try {
+      setSubmitError(null);
+      const c = getContracts(signer);
+      const tx = await c.catRegistry.registerShelter(form.name, form.location);
+      await (tx as any).wait();
+      setSubmitted(true);
+    } catch (err: any) {
+      if (!err?.message?.includes("user rejected")) {
+        setSubmitError(err?.message?.slice(0, 100) ?? "提交失败");
+      }
+    }
   };
 
   if (submitted) {
