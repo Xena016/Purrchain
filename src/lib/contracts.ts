@@ -72,10 +72,23 @@ export const DONATION_VAULT_ABI = [
 ] as const;
 
 export const ADOPTION_VAULT_ABI = [
+  // 用户操作
   "function applyAdoption(uint256 _catId) external",
   "function payDeposit(uint256 _catId) external payable",
+  "function cancelAdoption(uint256 _catId) external",
+  "function forceWithdraw(uint256 _catId) external",
+  // 机构操作
+  "function approveApplication(uint256 _catId) external",
+  "function rejectApplication(uint256 _catId) external",
+  "function confirmReturn(uint256 _catId, bool _healthy) external",
+  // Owner 操作
+  "function confirmVisit(uint256 _catId, bool _passed) external",
+  // 查询
   "function getApplication(uint256 _catId) view returns (tuple(address applicant, uint256 catId, uint256 depositAmount, uint256 depositTimestamp, uint256 cancelTimestamp, uint8 status))",
   "function adoptionDepositAmount() view returns (uint256)",
+  "function remainingLockTime(uint256 _catId) view returns (uint256)",
+  "function lockPeriod() view returns (uint256)",
+  "function returnConfirmPeriod() view returns (uint256)",
 ] as const;
 
 export const GAME_CONTRACT_ABI = [
