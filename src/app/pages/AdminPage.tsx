@@ -5,7 +5,7 @@ import { getReadonlyContracts, getContracts, ADDRESSES } from "../../lib/contrac
 import { ethers } from "ethers";
 import { ShieldCheck, Clock, CheckCircle, XCircle, RefreshCw, ExternalLink, Lock, ArrowLeft, Home, Search } from "lucide-react";
 
-const OWNER_ADDRESS = "0xc3AE0Fd5d1Be2A5d19bb683E43fFa0D3991a074d";
+const OWNER_ADDRESS = "0xA80deB694775DD09e5141b2097A879c7419309c0";
 const ADMIN_PASSWORD = "purrchain2024";
 
 interface ShelterInfo {
@@ -129,6 +129,13 @@ export function AdminPage() {
     }
   };
 
+
+  // ── 回访确认状态 ──────────────────────────────────────────
+  const [visitCatId, setVisitCatId]       = useState("");
+  const [visitLoading, setVisitLoading]   = useState(false);
+  const [visitResult, setVisitResult]     = useState<string | null>(null);
+  const [visitError,  setVisitError]      = useState<string | null>(null);
+
   // ── 密码解锁页 ──────────────────────────────────────────
   if (!unlocked) {
     return (
@@ -187,11 +194,6 @@ export function AdminPage() {
   const pending = shelters.filter(s => s.status === 0);
   const approved = shelters.filter(s => s.status === 1);
 
-  // ── 回访确认状态 ──────────────────────────────────────────
-  const [visitCatId, setVisitCatId]       = useState("");
-  const [visitLoading, setVisitLoading]   = useState(false);
-  const [visitResult, setVisitResult]     = useState<string | null>(null);
-  const [visitError,  setVisitError]      = useState<string | null>(null);
 
   const confirmVisit = async (passed: boolean) => {
     if (!signer || !isOwner) { setVisitError(isZh ? "请先连接 Owner 钱包" : "Connect Owner wallet first"); return; }
