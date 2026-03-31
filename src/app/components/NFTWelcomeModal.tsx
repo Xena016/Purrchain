@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { X, Sparkles, Coins, Gift, Heart } from "lucide-react";
 
@@ -7,20 +7,19 @@ interface Props {
 }
 
 export function NFTWelcomeModal({ onClose }: Props) {
-  const { claimNFT, walletConnected, connectWallet } = useApp();
+  const { claimFamilyPortrait, isConnected, connectWallet, nftClaimed } = useApp();
   const [claimed, setClaimed] = useState(false);
   const [claiming, setClaiming] = useState(false);
 
   const handleClaim = async () => {
-    if (!walletConnected) {
+    if (!isConnected) {
       connectWallet();
       return;
     }
-    setClaiming(true);
-    await new Promise(r => setTimeout(r, 1500));
-    claimNFT();
-    setClaiming(false);
-    setClaimed(true);
+	setClaiming(true);
+	await claimFamilyPortrait();
+	setClaiming(false);
+	setClaimed(true);
   };
 
   return (
@@ -91,7 +90,7 @@ export function NFTWelcomeModal({ onClose }: Props) {
                 💡 为什么要帮助猫咪？每年有数万只流浪猫因缺乏资源而无法获得救治。PurrChain 用区块链让每一笔善意都透明可查，直达需要帮助的猫咪。
               </div>
 
-              {!walletConnected && (
+              {!isConnected && (
                 <p className="text-xs text-center" style={{ color: "#666688" }}>
                   ⚠️ 需先连接钱包才能领取 NFT（每个钱包地址仅限领取一次）
                 </p>
@@ -106,7 +105,7 @@ export function NFTWelcomeModal({ onClose }: Props) {
                   fontSize: "1.05rem",
                   cursor: "pointer",
                 }}>
-                {claiming ? "领取中..." : walletConnected ? "🎁 免费领取 NFT + 20 PURR" : "🔗 连接钱包并领取"}
+                {claiming ? "领取中..." : isConnected ? "🎁 免费领取 NFT + 20 PURR" : "🔗 连接钱包并领取"}
               </button>
             </>
           ) : (

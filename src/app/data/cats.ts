@@ -1,3 +1,7 @@
+// ============================================================
+//  本地假数据（演示用）
+// ============================================================
+
 export type CatStatus = "available" | "cloudAdopted" | "pendingAdoption" | "adopted";
 
 export interface Cat {
@@ -163,20 +167,70 @@ export const SHELTERS = [
   { id: 2, name: "彩虹猫舍", location: "台湾高雄", catCount: 2, status: "approved" },
 ];
 
-export function getStatusLabel(status: CatStatus) {
+// ============================================================
+//  ChainCat — 从链上读取的猫咪数据结构
+//  Dashboard 和 CatDetail 都用这个类型
+// ============================================================
+
+export interface ChainCat {
+  id: number;
+  name: string;
+  age: number;
+  gender: string;
+  description: string;
+  stageURIs: string[];
+  shelter: string;         // 链上存的是机构钱包地址
+  shelterLocation: string; // 从假数据补充，链上无此字段
+  status: CatStatus;
+  image: string;           // 从 IPFS metadata 解析出来，或 fallback 到假数据图片
+  stage: 1 | 2 | 3 | 4;
+  isOnChain: boolean;      // true = 链上真实数据，false = 演示假数据
+}
+
+// ============================================================
+//  getStatusLabel — 支持中英文
+// ============================================================
+
+export function getStatusLabel(status: CatStatus, lang: "zh" | "en" = "zh"): string {
+  if (lang === "en") {
+    switch (status) {
+      case "available":       return "Available";
+      case "cloudAdopted":    return "Cloud Adopted";
+      case "pendingAdoption": return "Pending";
+      case "adopted":         return "Adopted";
+    }
+  }
   switch (status) {
-    case "available": return "待领养";
-    case "cloudAdopted": return "云领养中";
+    case "available":       return "待领养";
+    case "cloudAdopted":    return "云领养中";
     case "pendingAdoption": return "领养处理中";
-    case "adopted": return "已被领养";
+    case "adopted":         return "已被领养";
   }
 }
 
-export function getStatusColor(status: CatStatus) {
+// ============================================================
+//  getStatusColor — 返回 Tailwind class 字符串
+// ============================================================
+
+export function getStatusColor(status: CatStatus): string {
   switch (status) {
-    case "available": return "text-emerald-400 bg-emerald-400/10 border-emerald-400/30";
-    case "cloudAdopted": return "text-cyan-400 bg-cyan-400/10 border-cyan-400/30";
+    case "available":       return "text-emerald-400 bg-emerald-400/10 border-emerald-400/30";
+    case "cloudAdopted":    return "text-cyan-400 bg-cyan-400/10 border-cyan-400/30";
     case "pendingAdoption": return "text-amber-400 bg-amber-400/10 border-amber-400/30";
-    case "adopted": return "text-purple-400 bg-purple-400/10 border-purple-400/30";
+    case "adopted":         return "text-purple-400 bg-purple-400/10 border-purple-400/30";
+  }
+}
+
+// ============================================================
+//  链上 status 数字 → CatStatus
+// ============================================================
+
+export function chainStatusToLocal(n: number): CatStatus {
+  switch (n) {
+    case 0: return "available";
+    case 1: return "cloudAdopted";
+    case 2: return "pendingAdoption";
+    case 3: return "adopted";
+    default: return "available";
   }
 }

@@ -10,7 +10,7 @@ import {
 import { Navbar } from "../components/Navbar";
 import { useApp } from "../context/AppContext";
 import { getContracts, getReadonlyContracts } from "../../lib/contracts";
-import { getStatusLabel, getStatusColor, type ChainCat } from "./Dashboard";
+import { getStatusLabel, getStatusColor, chainStatusToLocal, type ChainCat } from "../data/cats";
 
 // ============================================================
 //  Hook：从链上读单只猫数据
@@ -58,27 +58,19 @@ function useCat(id: number) {
           } catch { /* fallback */ }
         }
 
-        const toStatus = (n: number) => {
-          switch (n) {
-            case 0: return "available" as const;
-            case 1: return "cloudAdopted" as const;
-            case 2: return "pendingAdoption" as const;
-            case 3: return "adopted" as const;
-            default: return "available" as const;
-          }
-        };
-
         setCat({
           id,
           name: r.name,
-          age: r.age,
+          age: Number(r.age),
           gender: r.gender,
           description: r.description,
           stageURIs: uris,
           shelter: r.shelter,
-          status: toStatus(r.status),
+          shelterLocation: "",
+          status: chainStatusToLocal(r.status),
           image,
           stage,
+          isOnChain: true,
         });
       } catch (err) {
         console.error("读取猫咪详情失败:", err);
