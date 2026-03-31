@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, Zap, ShoppingBag, Package, ChevronRight, X, Clock, Trophy, Sparkles, Coins } from "lucide-react";
@@ -184,7 +184,7 @@ function RoomScene({ catState, catName }: { catState: CatState; catName: string 
           <div key={i} className="absolute top-0 bottom-0" style={{
             left: `${i * 12.5}%`,
             width: "1px",
-            background: "rgba(255,255,255,0.04)"
+            background: "rgba(109,58,238,0.04)"
           }} />
         ))}
       </div>
@@ -221,7 +221,7 @@ function RoomScene({ catState, catName }: { catState: CatState; catName: string 
 
       {/* Cat name label */}
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full text-xs"
-        style={{ background: "rgba(0,0,0,0.4)", color: "rgba(255,255,255,0.6)", fontFamily: "'Space Grotesk', sans-serif" }}>
+        style={{ background: "rgba(0,0,0,0.4)", color: "#4c4980", fontFamily: "'Space Grotesk', sans-serif" }}>
         {catState === "hunting" ? "🏃 外出探险中" : catState === "returning" ? "🎉 回来了！" : catState === "sleeping" ? "😴 休息中" : `💤 ${catName}`}
       </div>
 
@@ -234,7 +234,7 @@ function RoomScene({ catState, catName }: { catState: CatState; catName: string 
             className="text-center"
           >
             <div className="text-5xl mb-3">🌲</div>
-            <p className="text-sm" style={{ color: "rgba(255,255,255,0.7)", fontFamily: "'Nunito', sans-serif" }}>
+            <p className="text-sm" style={{ color: "#4c4980", fontFamily: "'Nunito', sans-serif" }}>
               正在外出探险...
             </p>
           </motion.div>
@@ -385,14 +385,14 @@ export function Game() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: "#060614", fontFamily: "'Nunito', sans-serif" }}>
+    <div className="min-h-screen" style={{ background: "#f7f5ff", fontFamily: "'Nunito', sans-serif" }}>
       <Navbar />
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-20 pb-8">
         {/* Back */}
         <button onClick={() => navigate(`/cat/${cat.id}`)}
           className="flex items-center gap-2 mb-4 text-sm"
-          style={{ color: "rgba(255,255,255,0.4)" }}>
+          style={{ color: "#7c7aaa" }}>
           <ArrowLeft size={15} /> 返回 {cat.name} 的档案
         </button>
 
@@ -401,7 +401,7 @@ export function Game() {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl p-4 mb-4 flex flex-wrap gap-4 items-center justify-between"
-          style={{ background: "rgba(13,13,43,0.9)", border: "1px solid rgba(167,139,250,0.2)" }}
+          style={{ background: "rgba(255,255,255,0.95)", border: "1px solid rgba(167,139,250,0.2)" }}
         >
           {/* Cat info */}
           <div className="flex items-center gap-3">
@@ -417,14 +417,14 @@ export function Game() {
           {/* Stamina */}
           <div className="flex items-center gap-2">
             <Zap size={14} style={{ color: "#FCD34D" }} />
-            <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>体力</span>
+            <span className="text-xs" style={{ color: "#7c7aaa" }}>体力</span>
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="w-4 h-4 rounded-sm"
-                  style={{ background: i <= stamina ? "#F59E0B" : "rgba(255,255,255,0.1)", boxShadow: i <= stamina ? "0 0 6px rgba(245,158,11,0.4)" : "none" }} />
+                  style={{ background: i <= stamina ? "#F59E0B" : "rgba(109,58,238,0.08)", boxShadow: i <= stamina ? "0 0 6px rgba(245,158,11,0.4)" : "none" }} />
               ))}
             </div>
-            <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{stamina}/5</span>
+            <span className="text-xs" style={{ color: "#7c7aaa" }}>{stamina}/5</span>
           </div>
 
           {/* PURR */}
@@ -479,7 +479,7 @@ export function Game() {
                 className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm text-white"
                 style={{
                   background: catState !== "idle" || stamina === 0
-                    ? "rgba(255,255,255,0.06)"
+                    ? "rgba(109,58,238,0.06)"
                     : "linear-gradient(135deg, #7C3AED, #06B6D4)",
                   color: catState !== "idle" || stamina === 0 ? "rgba(255,255,255,0.3)" : "#fff",
                   cursor: catState !== "idle" || stamina === 0 ? "default" : "pointer",
@@ -518,7 +518,7 @@ export function Game() {
                 whileTap={{ scale: 0.97 }}
                 onClick={() => setCatState(catState === "sleeping" ? "idle" : "sleeping")}
                 className="px-4 py-3.5 rounded-2xl text-lg"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
+                style={{ background: "rgba(109,58,238,0.06)", border: "1px solid rgba(109,58,238,0.08)" }}
                 title="休息"
               >
                 {catState === "sleeping" ? "⏰" : "😴"}
@@ -529,13 +529,13 @@ export function Game() {
           {/* Right Panel */}
           <div className="flex flex-col gap-4">
             {/* Inventory */}
-            <div className="rounded-2xl p-4" style={{ background: "rgba(13,13,43,0.9)", border: "1px solid rgba(167,139,250,0.15)" }}>
+            <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #ddd6fe" }}>
               <div className="flex items-center gap-2 mb-3">
                 <Package size={14} style={{ color: "#A78BFA" }} />
                 <span className="text-sm text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>背包</span>
               </div>
               {inventory.items.length === 0 ? (
-                <p className="text-xs text-center py-4" style={{ color: "rgba(255,255,255,0.3)" }}>
+                <p className="text-xs text-center py-4" style={{ color: "#a8a6c8" }}>
                   还没有物品
                   <br />派猫咪出去探险吧！
                 </p>
@@ -558,7 +558,7 @@ export function Game() {
             </div>
 
             {/* Game Tips */}
-            <div className="rounded-2xl p-4" style={{ background: "rgba(13,13,43,0.9)", border: "1px solid rgba(167,139,250,0.15)" }}>
+            <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #ddd6fe" }}>
               <div className="text-xs text-white mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>💡 游戏提示</div>
               <ul className="space-y-1.5 text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>
                 <li>⚡ 体力每 8 小时恢复 1 点</li>
@@ -570,14 +570,14 @@ export function Game() {
             </div>
 
             {/* NFT Collection preview */}
-            <div className="rounded-2xl p-4" style={{ background: "rgba(13,13,43,0.9)", border: "1px solid rgba(167,139,250,0.15)" }}>
+            <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #ddd6fe" }}>
               <div className="text-xs text-white mb-3" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>🎴 收藏系列</div>
               <div className="grid grid-cols-3 gap-2">
                 {[{ icon: "🐱", name: "玩耍", rarity: "普通" }, { icon: "😺", name: "同伴", rarity: "稀有" }, { icon: "😸", name: "睡觉", rarity: "珍稀" }].map((n) => (
                   <div key={n.name} className="text-center p-2 rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    style={{ background: "rgba(109,58,238,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
                     <div className="text-2xl mb-1">{n.icon}</div>
-                    <div className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>{n.name}</div>
+                    <div className="text-xs" style={{ color: "#7c7aaa" }}>{n.name}</div>
                     <div className="text-xs mt-0.5" style={{
                       color: n.rarity === "珍稀" ? "#F59E0B" : n.rarity === "稀有" ? "#06B6D4" : "rgba(255,255,255,0.3)"
                     }}>{n.rarity}</div>
@@ -604,14 +604,14 @@ export function Game() {
               <div className="flex justify-between items-center mb-5">
                 <h3 className="text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>配置探险</h3>
                 <button onClick={() => setShowHuntModal(false)} className="p-1.5 rounded-lg"
-                  style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
+                  style={{ background: "rgba(109,58,238,0.08)", color: "#7c7aaa" }}>
                   <X size={15} />
                 </button>
               </div>
 
               {/* Duration */}
               <div className="mb-4">
-                <label className="text-xs mb-2 block" style={{ color: "rgba(255,255,255,0.5)", fontFamily: "'Space Grotesk', sans-serif" }}>
+                <label className="text-xs mb-2 block" style={{ color: "#7c7aaa", fontFamily: "'Space Grotesk', sans-serif" }}>
                   探险时长
                 </label>
                 <div className="grid grid-cols-3 gap-2">
@@ -619,8 +619,8 @@ export function Game() {
                     <button key={key} onClick={() => setHuntConfig((c) => ({ ...c, duration: key }))}
                       className="py-2 px-1 rounded-xl text-xs text-center transition-all"
                       style={{
-                        background: huntConfig.duration === key ? "rgba(124,58,237,0.3)" : "rgba(255,255,255,0.05)",
-                        border: huntConfig.duration === key ? "1px solid rgba(167,139,250,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                        background: huntConfig.duration === key ? "rgba(124,58,237,0.3)" : "rgba(109,58,238,0.06)",
+                        border: huntConfig.duration === key ? "1px solid rgba(167,139,250,0.5)" : "1px solid rgba(109,58,238,0.08)",
                         color: huntConfig.duration === key ? "#A78BFA" : "rgba(255,255,255,0.5)",
                         fontFamily: "'Space Grotesk', sans-serif"
                       }}>
@@ -635,7 +635,7 @@ export function Game() {
 
               {/* Item */}
               <div className="mb-4">
-                <label className="text-xs mb-2 block" style={{ color: "rgba(255,255,255,0.5)", fontFamily: "'Space Grotesk', sans-serif" }}>
+                <label className="text-xs mb-2 block" style={{ color: "#7c7aaa", fontFamily: "'Space Grotesk', sans-serif" }}>
                   携带道具
                 </label>
                 <div className="grid grid-cols-3 gap-2">
@@ -643,8 +643,8 @@ export function Game() {
                     <button key={key} onClick={() => setHuntConfig((c) => ({ ...c, item: key }))}
                       className="py-2 px-1 rounded-xl text-xs text-center transition-all"
                       style={{
-                        background: huntConfig.item === key ? "rgba(124,58,237,0.3)" : "rgba(255,255,255,0.05)",
-                        border: huntConfig.item === key ? "1px solid rgba(167,139,250,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                        background: huntConfig.item === key ? "rgba(124,58,237,0.3)" : "rgba(109,58,238,0.06)",
+                        border: huntConfig.item === key ? "1px solid rgba(167,139,250,0.5)" : "1px solid rgba(109,58,238,0.08)",
                         color: huntConfig.item === key ? "#A78BFA" : "rgba(255,255,255,0.5)",
                         fontFamily: "'Space Grotesk', sans-serif"
                       }}>
@@ -662,8 +662,8 @@ export function Game() {
                 onClick={() => setHuntConfig((c) => ({ ...c, booster: !c.booster }))}
                 className="w-full py-2.5 rounded-xl text-xs mb-5 flex items-center justify-between px-4 transition-all"
                 style={{
-                  background: huntConfig.booster ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.04)",
-                  border: huntConfig.booster ? "1px solid rgba(245,158,11,0.3)" : "1px solid rgba(255,255,255,0.08)",
+                  background: huntConfig.booster ? "rgba(245,158,11,0.15)" : "rgba(109,58,238,0.04)",
+                  border: huntConfig.booster ? "1px solid rgba(245,158,11,0.3)" : "1px solid rgba(109,58,238,0.08)",
                   color: huntConfig.booster ? "#FCD34D" : "rgba(255,255,255,0.5)",
                 }}>
                 <span>⚡ 使用加速符（时长减半）</span>
@@ -672,8 +672,8 @@ export function Game() {
 
               {/* Cost summary */}
               <div className="flex justify-between items-center mb-4 px-3 py-2 rounded-xl"
-                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>总消耗</span>
+                style={{ background: "rgba(109,58,238,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <span className="text-xs" style={{ color: "#7c7aaa" }}>总消耗</span>
                 <span className="text-xs" style={{ color: "#FCD34D", fontFamily: "'Space Grotesk', sans-serif" }}>
                   ⚡{HUNT_DURATIONS[huntConfig.duration].stamina} + {ITEMS[huntConfig.item].cost + (huntConfig.booster ? 10 : 0)} PURR
                 </span>
@@ -686,7 +686,7 @@ export function Game() {
                 style={{
                   background: stamina >= HUNT_DURATIONS[huntConfig.duration].stamina
                     ? "linear-gradient(135deg, #7C3AED, #06B6D4)"
-                    : "rgba(255,255,255,0.06)",
+                    : "rgba(109,58,238,0.06)",
                   color: stamina >= HUNT_DURATIONS[huntConfig.duration].stamina ? "#fff" : "rgba(255,255,255,0.3)",
                   cursor: stamina >= HUNT_DURATIONS[huntConfig.duration].stamina ? "pointer" : "default",
                   fontFamily: "'Space Grotesk', sans-serif",
@@ -716,7 +716,7 @@ export function Game() {
                   🏪 道具商店
                 </h3>
                 <button onClick={() => setShowShop(false)} className="p-1.5 rounded-lg"
-                  style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}>
+                  style={{ background: "rgba(109,58,238,0.08)", color: "#7c7aaa" }}>
                   <X size={15} />
                 </button>
               </div>
@@ -732,12 +732,12 @@ export function Game() {
                   { icon: "🔮", name: "加速符", desc: "本次出猎时长减半", cost: 10, action: () => {} },
                 ].map((item) => (
                   <div key={item.name} className="flex items-center justify-between p-3 rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    style={{ background: "rgba(109,58,238,0.04)", border: "1px solid rgba(109,58,238,0.08)" }}>
                     <div className="flex items-center gap-3">
                       <span className="text-2xl">{item.icon}</span>
                       <div>
                         <div className="text-sm text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{item.name}</div>
-                        <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{item.desc}</div>
+                        <div className="text-xs" style={{ color: "#7c7aaa" }}>{item.desc}</div>
                       </div>
                     </div>
                     <button
@@ -745,9 +745,9 @@ export function Game() {
                       disabled={purr < item.cost}
                       className="px-3 py-1.5 rounded-lg text-xs transition-all"
                       style={{
-                        background: purr >= item.cost ? "rgba(124,58,237,0.2)" : "rgba(255,255,255,0.04)",
-                        border: purr >= item.cost ? "1px solid rgba(124,58,237,0.3)" : "1px solid rgba(255,255,255,0.06)",
-                        color: purr >= item.cost ? "#A78BFA" : "rgba(255,255,255,0.2)",
+                        background: purr >= item.cost ? "rgba(124,58,237,0.2)" : "rgba(109,58,238,0.04)",
+                        border: purr >= item.cost ? "1px solid rgba(124,58,237,0.3)" : "1px solid rgba(109,58,238,0.06)",
+                        color: purr >= item.cost ? "#A78BFA" : "rgba(109,58,238,0.25)",
                         cursor: purr >= item.cost ? "pointer" : "default",
                         fontFamily: "'Space Grotesk', sans-serif"
                       }}>
@@ -771,7 +771,7 @@ export function Game() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
               className="w-full max-w-sm rounded-3xl p-6 text-center"
-              style={{ background: "linear-gradient(145deg, #0D0D2B, #1a0d40)", border: "1px solid rgba(167,139,250,0.3)", boxShadow: "0 0 60px rgba(124,58,237,0.4)" }}
+              style={{ background: "linear-gradient(145deg, #0D0D2B, #1a0d40)", border: "1px solid #c4b5fd", boxShadow: "0 0 60px rgba(124,58,237,0.4)" }}
             >
               <motion.div
                 animate={{ rotate: [0, -10, 10, -5, 5, 0] }}
@@ -783,7 +783,7 @@ export function Game() {
               <h3 className="text-white mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                 {cat.name} 回来了！
               </h3>
-              <p className="text-sm mb-4" style={{ color: "rgba(255,255,255,0.6)" }}>带回了以下战利品</p>
+              <p className="text-sm mb-4" style={{ color: "#4c4980" }}>带回了以下战利品</p>
 
               <div className="space-y-2 mb-5">
                 <div className="flex items-center justify-between px-4 py-2 rounded-xl"
@@ -803,7 +803,7 @@ export function Game() {
                     <span className="text-sm text-white">{r.icon} {r.name} NFT</span>
                     <span className="text-xs px-2 py-0.5 rounded-full"
                       style={{
-                        background: r.rarity === "珍稀" ? "rgba(245,158,11,0.2)" : r.rarity === "稀有" ? "rgba(6,182,212,0.2)" : "rgba(255,255,255,0.1)",
+                        background: r.rarity === "珍稀" ? "rgba(245,158,11,0.2)" : r.rarity === "稀有" ? "rgba(6,182,212,0.2)" : "rgba(109,58,238,0.08)",
                         color: r.rarity === "珍稀" ? "#FCD34D" : r.rarity === "稀有" ? "#06B6D4" : "rgba(255,255,255,0.5)",
                         fontFamily: "'Space Grotesk', sans-serif"
                       }}>
@@ -812,7 +812,7 @@ export function Game() {
                   </motion.div>
                 ))}
                 {rewards.length === 0 && (
-                  <div className="px-4 py-2 rounded-xl text-sm" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }}>
+                  <div className="px-4 py-2 rounded-xl text-sm" style={{ background: "rgba(109,58,238,0.06)", color: "#7c7aaa" }}>
                     这次没有 NFT 掉落（未携带道具）
                   </div>
                 )}

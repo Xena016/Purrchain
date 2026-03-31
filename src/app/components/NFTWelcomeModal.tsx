@@ -34,7 +34,7 @@ export function NFTWelcomeModal({ onClose }: Props) {
         {/* Close */}
         <button onClick={onClose}
           className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center z-10"
-          style={{ background: "rgba(255,255,255,0.08)", color: "#888", cursor: "pointer" }}>
+          style={{ background: "rgba(109,58,238,0.08)", color: "#888", cursor: "pointer" }}>
           <X size={16} />
         </button>
 
@@ -50,7 +50,7 @@ export function NFTWelcomeModal({ onClose }: Props) {
               <div className="text-7xl mb-2" style={{ filter: "drop-shadow(0 0 20px rgba(247,165,65,0.6))" }}>🐱</div>
               <div className="flex flex-col items-center">
                 <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(247,165,65,0.2)", color: "#f7a541" }}>Season 1</span>
-                <span className="text-sm mt-1" style={{ color: "#fff", fontWeight: 700 }}>猫咪全家福</span>
+                <span className="text-sm mt-1" style={{ color: "#1e1b4b", fontWeight: 700 }}>猫咪全家福</span>
               </div>
             </div>
             {/* Sparkle effect */}
@@ -61,8 +61,8 @@ export function NFTWelcomeModal({ onClose }: Props) {
           {!claimed ? (
             <>
               <div className="text-center">
-                <h2 className="text-2xl mb-2" style={{ color: "#fff", fontWeight: 800 }}>🎉 欢迎加入 PurrChain！</h2>
-                <p className="text-sm leading-relaxed" style={{ color: "#9090b0" }}>
+                <h2 className="text-2xl mb-2" style={{ color: "#1e1b4b", fontWeight: 800 }}>🎉 欢迎加入 PurrChain！</h2>
+                <p className="text-sm leading-relaxed" style={{ color: "#4c4980" }}>
                   作为新用户，您可以免费领取<span style={{ color: "#f7a541" }}>当季猫咪全家福 NFT</span>。
                   这是您进入 PurrChain 世界的入场凭证！
                 </p>
@@ -76,17 +76,17 @@ export function NFTWelcomeModal({ onClose }: Props) {
                   { icon: <Heart size={16} />, color: "#ff6b6b", text: "可销毁换取 30 PURR（不可逆），或保留作收藏" },
                 ].map((item, i) => (
                   <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    style={{ background: "rgba(109,58,238,0.03)", border: "1px solid rgba(109,58,238,0.06)" }}>
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
                       style={{ background: `${item.color}20`, color: item.color }}>
                       {item.icon}
                     </div>
-                    <p className="text-sm" style={{ color: "#9090b0" }}>{item.text}</p>
+                    <p className="text-sm" style={{ color: "#4c4980" }}>{item.text}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="w-full p-3 rounded-xl text-sm text-center" style={{ background: "rgba(126,200,227,0.06)", border: "1px solid rgba(126,200,227,0.12)", color: "#6060a0" }}>
+              <div className="w-full p-3 rounded-xl text-sm text-center" style={{ background: "rgba(126,200,227,0.06)", border: "1px solid rgba(126,200,227,0.12)", color: "#7c7aaa" }}>
                 💡 为什么要帮助猫咪？每年有数万只流浪猫因缺乏资源而无法获得救治。PurrChain 用区块链让每一笔善意都透明可查，直达需要帮助的猫咪。
               </div>
 
@@ -100,7 +100,7 @@ export function NFTWelcomeModal({ onClose }: Props) {
                 className="w-full py-4 rounded-xl transition-all hover:opacity-90 disabled:opacity-60"
                 style={{
                   background: "linear-gradient(135deg, #f7a541, #ff6b6b)",
-                  color: "#fff",
+                  color: "#1e1b4b",
                   fontWeight: 700,
                   fontSize: "1.05rem",
                   cursor: "pointer",
@@ -111,15 +111,15 @@ export function NFTWelcomeModal({ onClose }: Props) {
           ) : (
             <div className="flex flex-col items-center gap-5 text-center">
               <div className="text-6xl animate-bounce">🎊</div>
-              <h2 className="text-2xl" style={{ color: "#fff", fontWeight: 800 }}>领取成功！</h2>
-              <p style={{ color: "#9090b0" }}>
+              <h2 className="text-2xl" style={{ color: "#1e1b4b", fontWeight: 800 }}>领取成功！</h2>
+              <p style={{ color: "#4c4980" }}>
                 您已成功获得 <span style={{ color: "#f7a541" }}>Season 1 全家福 NFT</span> 与{" "}
                 <span style={{ color: "#4ecdc4" }}>20 $PURR</span>！
                 快去浏览猫咪档案，找到您的第一只虚拟猫咪伙伴吧 🐱
               </p>
               <button onClick={onClose}
                 className="px-8 py-3 rounded-full"
-                style={{ background: "linear-gradient(135deg, #7ec8e3, #a855f7)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                style={{ background: "linear-gradient(135deg, #7ec8e3, #a855f7)", color: "#1e1b4b", fontWeight: 700, cursor: "pointer" }}>
                 开始探索猫咪档案 →
               </button>
             </div>

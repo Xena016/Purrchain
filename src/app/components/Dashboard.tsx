@@ -27,17 +27,17 @@ export function Dashboard() {
   });
 
   return (
-    <div className="min-h-screen pt-20" style={{ background: "#0a0819" }}>
+    <div className="min-h-screen pt-20" style={{ background: "#f7f5ff" }}>
       {showModal && <NFTWelcomeModal onClose={() => setShowModal(false)} />}
 
       {/* Header */}
       <div className="px-6 py-8 max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl" style={{ color: "#fff", fontWeight: 800 }}>
+            <h1 className="text-3xl" style={{ color: "#1e1b4b", fontWeight: 800 }}>
               🐾 猫咪档案馆
             </h1>
-            <p className="text-sm mt-1" style={{ color: "#6060a0" }}>
+            <p className="text-sm mt-1" style={{ color: "#7c7aaa" }}>
               {filtered.length} 只猫咪等待您的关注 · 由 <span style={{ color: "#7ec8e3" }}>CatRegistry.sol</span> 链上存储
             </p>
           </div>
@@ -47,7 +47,7 @@ export function Dashboard() {
               className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm animate-pulse"
               style={{
                 background: "linear-gradient(135deg, #f7a541, #ff6b6b)",
-                color: "#fff",
+                color: "#1e1b4b",
                 fontWeight: 700,
                 cursor: "pointer",
                 animationDuration: "2s",
@@ -60,13 +60,13 @@ export function Dashboard() {
         {/* Search & Filter */}
         <div className="flex flex-col sm:flex-row gap-3 mb-8">
           <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#6060a0" }} />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#7c7aaa" }} />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="搜索猫咪名字、品种、收容机构..."
               className="w-full pl-10 pr-4 py-3 rounded-xl outline-none"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(126,200,227,0.12)", color: "#e8e8f0" }}
+              style={{ background: "rgba(109,58,238,0.06)", border: "1px solid rgba(126,200,227,0.12)", color: "#1e1b4b" }}
             />
           </div>
           <div className="flex gap-2">
@@ -79,8 +79,8 @@ export function Dashboard() {
               <button key={f.val} onClick={() => setFilterStatus(f.val)}
                 className="px-4 py-2 rounded-xl text-sm transition-all"
                 style={{
-                  background: filterStatus === f.val ? "rgba(126,200,227,0.2)" : "rgba(255,255,255,0.04)",
-                  border: filterStatus === f.val ? "1px solid rgba(126,200,227,0.4)" : "1px solid rgba(255,255,255,0.06)",
+                  background: filterStatus === f.val ? "rgba(126,200,227,0.2)" : "rgba(109,58,238,0.04)",
+                  border: filterStatus === f.val ? "1px solid rgba(126,200,227,0.4)" : "1px solid rgba(109,58,238,0.06)",
                   color: filterStatus === f.val ? "#7ec8e3" : "#6060a0",
                   cursor: "pointer",
                 }}>
@@ -98,7 +98,7 @@ export function Dashboard() {
             return (
               <Link key={cat.id} to={`/cat/${cat.id}`}
                 className="group block rounded-2xl overflow-hidden transition-all hover:-translate-y-1 hover:shadow-2xl"
-                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(126,200,227,0.08)" }}>
+                style={{ background: "rgba(109,58,238,0.03)", border: "1px solid rgba(126,200,227,0.08)" }}>
 
                 {/* Cat Image */}
                 <div className="relative overflow-hidden" style={{ height: "200px" }}>
@@ -125,8 +125,8 @@ export function Dashboard() {
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-2">
                     <div>
-                      <h3 className="text-lg" style={{ color: "#fff", fontWeight: 700 }}>{cat.name}</h3>
-                      <p className="text-xs" style={{ color: "#6060a0" }}>
+                      <h3 className="text-lg" style={{ color: "#1e1b4b", fontWeight: 700 }}>{cat.name}</h3>
+                      <p className="text-xs" style={{ color: "#7c7aaa" }}>
                         {GENDER_LABEL[cat.gender]} · {cat.age}岁 · {cat.breed}
                       </p>
                     </div>
@@ -137,7 +137,7 @@ export function Dashboard() {
                   </p>
 
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs" style={{ color: "#6060a0" }}>
+                    <div className="flex items-center gap-1.5 text-xs" style={{ color: "#7c7aaa" }}>
                       <MapPin size={12} />
                       {cat.shelter}
                     </div>
@@ -150,7 +150,7 @@ export function Dashboard() {
                   </div>
 
                   {/* Quick action hint */}
-                  <div className="mt-3 pt-3 flex items-center gap-2 text-xs" style={{ borderTop: "1px solid rgba(255,255,255,0.05)", color: "#7ec8e3" }}>
+                  <div className="mt-3 pt-3 flex items-center gap-2 text-xs" style={{ borderTop: "1px solid rgba(109,58,238,0.06)", color: "#7ec8e3" }}>
                     {!isAdopted ? (
                       <>
                         <Heart size={12} />
@@ -172,7 +172,7 @@ export function Dashboard() {
         {filtered.length === 0 && (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">🔍</div>
-            <p style={{ color: "#6060a0" }}>没有找到符合条件的猫咪</p>
+            <p style={{ color: "#7c7aaa" }}>没有找到符合条件的猫咪</p>
           </div>
         )}
       </div>

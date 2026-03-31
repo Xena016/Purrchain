@@ -1,17 +1,17 @@
-import { ethers } from "ethers";
+﻿import { ethers } from "ethers";
 
 // ============================================================
 //  合约地址 — Avalanche Fuji 测试网 (chainId: 43113)
 // ============================================================
 
 export const ADDRESSES = {
-  catRegistry:   "0x96208e12E4Af9F76C2Ea46D86474c1a90919ac45",
-  catNFT:        "0x2E7Ccd19c383102831a54de2dF57Ad46198D9e37",
-  purrToken:     "0xf79B8fe6A79fe1eBA747842B6B6D00b26F5ed250",
-  equipmentNFT:  "0xb00081765ce22319060e7286BAdeFdE0B75120Ce",
-  gameContract:  "0x469853196b0201fFedDB53008dF11659e22815ee",
-  donationVault: "0xc55D34E3F1e3B690872934359930A64fb82dd56A",
-  adoptionVault: "0xFcbA7E3ddc86bfFCFeD0dE62e4F404d9f05878C9",
+  catRegistry:   "0xA7002729B8CD1a01adc58eD4fD2A1F22491AfD81",
+  catNFT:        "0x1c23189c9DCDed2050008699576e28F303e2E138",
+  purrToken:     "0xBAc1d9887cD4bA082049A50b6e7024fd1ce9258c",
+  equipmentNFT:  "0x368A130859323B644Dc55f2371C6e056dE8003E6",
+  gameContract:  "0xb46cDF1e9A48912D12F9b3cD98766B5bEe8b9Afe",
+  donationVault: "0xE487579BA05d150d3cb0c0415F395B760f7280F2",
+  adoptionVault: "0xEf0C63083c78B24Ad4a232AA793723f633E67338",
 } as const;
 
 // ============================================================
@@ -37,6 +37,7 @@ export const CAT_REGISTRY_ABI = [
   "function getCat(uint256 _catId) view returns (tuple(uint256 id, string name, uint8 age, string gender, string description, string[4] stageURIs, address shelter, uint8 status))",
   "function isShelterApproved(address _shelter) view returns (bool)",
   "function registerShelter(string calldata _name, string calldata _location) external",
+  "event ShelterRegistered(address indexed shelter, string name, string location)",
   "function shelters(address) view returns (string name, string location, address wallet, uint8 status)",
 ] as const;
 

@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+﻿import { Link } from "react-router";
 import { motion } from "motion/react";
 import { MapPin, Heart } from "lucide-react";
 import { Cat, getStatusLabel, getStatusColor } from "../data/cats";
@@ -23,7 +23,7 @@ export function CatCard({ cat, index }: CatCardProps) {
         <div
           className="rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 group"
           style={{
-            background: "linear-gradient(145deg, rgba(13,13,43,0.9), rgba(26,16,64,0.9))",
+            background: "linear-gradient(145deg, rgba(255,255,255,0.95), rgba(26,16,64,0.9))",
             border: "1px solid rgba(167,139,250,0.15)",
             boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
           }}
@@ -38,7 +38,7 @@ export function CatCard({ cat, index }: CatCardProps) {
             {/* Gradient overlay */}
             <div
               className="absolute inset-0"
-              style={{ background: "linear-gradient(to bottom, transparent 50%, rgba(13,13,43,0.9) 100%)" }}
+              style={{ background: "linear-gradient(to bottom, transparent 50%, rgba(255,255,255,0.95) 100%)" }}
             />
 
             {/* Status badge */}
@@ -68,7 +68,7 @@ export function CatCard({ cat, index }: CatCardProps) {
               <h3 className="text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                 {cat.name}
               </h3>
-              <div className="flex items-center gap-1 text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
+              <div className="flex items-center gap-1 text-xs" style={{ color: "#7c7aaa" }}>
                 <span>{cat.gender === "female" ? "♀" : "♂"}</span>
                 <span>{cat.age < 1 ? `${Math.round(cat.age * 12)}月龄` : `${cat.age}岁`}</span>
               </div>
@@ -109,7 +109,7 @@ export function CatCard({ cat, index }: CatCardProps) {
           <div
             className="px-4 py-3 flex items-center justify-center gap-2 transition-all duration-300"
             style={{
-              borderTop: "1px solid rgba(255,255,255,0.06)",
+              borderTop: "1px solid rgba(109,58,238,0.06)",
               color: "rgba(167,139,250,0.7)",
             }}
           >

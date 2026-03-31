@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
+﻿import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { Wallet, Building2, Shield, Coins, Gamepad2, Heart, ChevronDown, ExternalLink } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { Navbar } from "../components/Navbar";
 
 function StarField() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -99,8 +100,9 @@ export function Landing() {
   return (
     <div
       className="min-h-screen relative overflow-x-hidden"
-      style={{ background: "#060614", fontFamily: "'Nunito', sans-serif" }}
+      style={{ background: "#f7f5ff", fontFamily: "'Nunito', sans-serif" }}
     >
+      <Navbar />
       <StarField />
 
       {/* Background gradients */}
@@ -157,7 +159,7 @@ export function Landing() {
 
           <p
             className="max-w-xl mx-auto mb-8 text-lg"
-            style={{ color: "rgba(255,255,255,0.6)", lineHeight: 1.7 }}
+            style={{ color: "#4c4980", lineHeight: 1.7 }}
           >
             去中心化猫咪领养平台。用区块链记录每一只猫的故事，
             <br className="hidden sm:block" />
@@ -187,9 +189,9 @@ export function Landing() {
               onClick={() => navigate("/institution/register")}
               className="flex items-center gap-2 px-8 py-4 rounded-2xl text-base"
               style={{
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                color: "rgba(255,255,255,0.8)",
+                background: "rgba(109,58,238,0.06)",
+                border: "1px solid rgba(109,58,238,0.2)",
+                color: "#2d2a6e",
                 fontFamily: "'Space Grotesk', sans-serif",
               }}
             >
@@ -210,7 +212,7 @@ export function Landing() {
                 <div className="text-2xl" style={{ color: "#A78BFA", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700 }}>
                   {s.num}
                 </div>
-                <div className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+                <div className="text-xs mt-1" style={{ color: "#7c7aaa" }}>
                   {s.label}
                 </div>
               </div>
@@ -224,8 +226,8 @@ export function Landing() {
           animate={{ y: [0, 8, 0] }}
           transition={{ repeat: Infinity, duration: 1.5 }}
         >
-          <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>向下探索</span>
-          <ChevronDown size={16} style={{ color: "rgba(255,255,255,0.3)" }} />
+          <span className="text-xs" style={{ color: "#a8a6c8" }}>向下探索</span>
+          <ChevronDown size={16} style={{ color: "#a8a6c8" }} />
         </motion.div>
       </section>
 
@@ -239,11 +241,11 @@ export function Landing() {
         >
           <h2
             className="mb-3"
-            style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#fff", fontSize: "clamp(1.5rem, 4vw, 2.5rem)" }}
+            style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e1b4b", fontSize: "clamp(1.5rem, 4vw, 2.5rem)" }}
           >
             为什么选择 PurrChain？
           </h2>
-          <p style={{ color: "rgba(255,255,255,0.5)" }}>区块链 × 真实领养 × 游戏化体验</p>
+          <p style={{ color: "#7c7aaa" }}>区块链 × 真实领养 × 游戏化体验</p>
         </motion.div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -256,8 +258,8 @@ export function Landing() {
               transition={{ delay: i * 0.1 }}
               className="p-6 rounded-2xl"
               style={{
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(109,58,238,0.04)",
+                border: "1px solid rgba(109,58,238,0.08)",
               }}
             >
               <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
@@ -267,7 +269,7 @@ export function Landing() {
               <h3 className="mb-2 text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                 {f.title}
               </h3>
-              <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#7c7aaa" }}>
                 {f.desc}
               </p>
             </motion.div>
@@ -285,7 +287,7 @@ export function Landing() {
             className="text-center mb-14"
           >
             <h2 className="mb-3"
-              style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#fff", fontSize: "clamp(1.5rem, 4vw, 2.5rem)" }}>
+              style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e1b4b", fontSize: "clamp(1.5rem, 4vw, 2.5rem)" }}>
               新用户入场三步骤
             </h2>
           </motion.div>
@@ -301,7 +303,7 @@ export function Landing() {
                 className="relative"
               >
                 <div className="p-5 rounded-2xl h-full"
-                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(167,139,250,0.15)" }}>
+                  style={{ background: "rgba(109,58,238,0.04)", border: "1px solid #ddd6fe" }}>
                   <div
                     className="text-3xl mb-3"
                     style={{ fontFamily: "'Space Grotesk', sans-serif", color: "rgba(167,139,250,0.3)", fontWeight: 700 }}
@@ -333,7 +335,7 @@ export function Landing() {
           className="text-center mb-14"
         >
           <h2 className="mb-3"
-            style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#fff", fontSize: "clamp(1.5rem, 4vw, 2.5rem)" }}>
+            style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e1b4b", fontSize: "clamp(1.5rem, 4vw, 2.5rem)" }}>
             NFT 类型一览
           </h2>
         </motion.div>
@@ -356,7 +358,7 @@ export function Landing() {
               <div className="text-sm text-white mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                 {n.name}
               </div>
-              <div className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>{n.desc}</div>
+              <div className="text-xs" style={{ color: "#7c7aaa" }}>{n.desc}</div>
             </motion.div>
           ))}
         </div>
@@ -371,10 +373,10 @@ export function Landing() {
         >
           <div className="inline-block text-5xl mb-6">🐱</div>
           <h2 className="mb-4"
-            style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#fff", fontSize: "clamp(1.5rem, 4vw, 2.2rem)" }}>
+            style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e1b4b", fontSize: "clamp(1.5rem, 4vw, 2.2rem)" }}>
             有一只猫咪正在等待你
           </h2>
-          <p className="mb-8 max-w-md mx-auto" style={{ color: "rgba(255,255,255,0.5)" }}>
+          <p className="mb-8 max-w-md mx-auto" style={{ color: "#7c7aaa" }}>
             连接钱包，领取免费 NFT，开始你的爱猫之旅。
             每一笔支持都将帮助真实的猫咪找到温暖的家。
           </p>
@@ -396,7 +398,7 @@ export function Landing() {
 
       {/* Footer */}
       <footer className="relative border-t px-6 py-8 text-center"
-        style={{ borderColor: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.3)" }}>
+        style={{ borderColor: "rgba(109,58,238,0.06)", color: "#a8a6c8" }}>
         <div className="text-sm">
           PurrChain · 部署在 Avalanche Fuji 测试网 (chainId: 43113)
         </div>
