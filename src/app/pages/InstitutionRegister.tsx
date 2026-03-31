@@ -65,7 +65,7 @@ const handleSubmit = async () => {
 
   if (submitted) {
     return (
-      <div className="min-h-screen" style={{ background: "#f7f5ff" }}>
+      <div className="min-h-screen" style={{ background: "#fffbf5" }}>
         <Navbar />
         <div className="min-h-screen flex items-center justify-center px-6 pt-20">
           <motion.div
@@ -74,16 +74,16 @@ const handleSubmit = async () => {
             className="w-full max-w-md text-center"
           >
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6"
-              style={{ background: "rgba(124,58,237,0.2)", border: "2px solid rgba(124,58,237,0.4)" }}>
-              <CheckCircle size={36} style={{ color: "#A78BFA" }} />
+              style={{ background: "rgba(249,115,22,0.12)", border: "2px solid rgba(249,115,22,0.35)" }}>
+              <CheckCircle size={36} style={{ color: "#F97316" }} />
             </div>
             <h2 className="mb-3 text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               提交成功！
             </h2>
-            <p className="mb-2 text-sm" style={{ color: "#4c4980", fontFamily: "'Nunito', sans-serif" }}>
+            <p className="mb-2 text-sm" style={{ color: "#78350f", fontFamily: "'Nunito', sans-serif" }}>
               你的机构注册申请已提交，平台将在 3-5 个工作日内完成审核。
             </p>
-            <p className="mb-8 text-sm" style={{ color: "#7c7aaa", fontFamily: "'Nunito', sans-serif" }}>
+            <p className="mb-8 text-sm" style={{ color: "#b45309", fontFamily: "'Nunito', sans-serif" }}>
               审核通过后，你将可以：
               <br />• 上传猫咪档案（姓名/年龄/成长图片）
               <br />• 接受云领养捐款和真实领养申请
@@ -91,12 +91,12 @@ const handleSubmit = async () => {
             </p>
 
             <div className="p-4 rounded-2xl mb-6 text-left"
-              style={{ background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.2)" }}>
+              style={{ background: "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.12)" }}>
               <div className="flex items-center gap-2 mb-2">
-                <AlertCircle size={14} style={{ color: "#A78BFA" }} />
+                <AlertCircle size={14} style={{ color: "#F97316" }} />
                 <span className="text-xs text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>注册信息</span>
               </div>
-              <div className="text-xs space-y-1" style={{ color: "#7c7aaa", fontFamily: "'Nunito', sans-serif" }}>
+              <div className="text-xs space-y-1" style={{ color: "#b45309", fontFamily: "'Nunito', sans-serif" }}>
                 <div>机构名称：{form.name}</div>
                 <div>所在城市：{form.location}</div>
                 <div>联系邮箱：{form.email}</div>
@@ -109,9 +109,9 @@ const handleSubmit = async () => {
                 onClick={() => navigate("/")}
                 className="flex-1 py-3 rounded-xl text-sm"
                 style={{
-                  background: "rgba(109,58,238,0.06)",
-                  color: "#4c4980",
-                  border: "1px solid rgba(109,58,238,0.08)",
+                  background: "rgba(249,115,22,0.06)",
+                  color: "#78350f",
+                  border: "1px solid rgba(249,115,22,0.12)",
                   fontFamily: "'Nunito', sans-serif"
                 }}
               >
@@ -121,7 +121,7 @@ const handleSubmit = async () => {
                 onClick={() => navigate("/dashboard")}
                 className="flex-1 py-3 rounded-xl text-sm text-white"
                 style={{
-                  background: "linear-gradient(135deg, #7C3AED, #06B6D4)",
+                  background: "linear-gradient(135deg, #F97316, #fbbf24)",
                   fontFamily: "'Nunito', sans-serif"
                 }}
               >
@@ -135,13 +135,13 @@ const handleSubmit = async () => {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: "#f7f5ff", fontFamily: "'Nunito', sans-serif" }}>
+    <div className="min-h-screen" style={{ background: "#fffbf5", fontFamily: "'Nunito', sans-serif" }}>
       <Navbar />
 
       {/* Background */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full opacity-10"
-          style={{ background: "radial-gradient(ellipse, #7C3AED 0%, transparent 70%)" }} />
+          style={{ background: "radial-gradient(ellipse, #F97316 0%, transparent 70%)" }} />
       </div>
 
       <div className="min-h-screen flex flex-col items-center justify-center px-6 pt-24 pb-12">
@@ -153,13 +153,13 @@ const handleSubmit = async () => {
             className="text-center mb-8"
           >
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
-              style={{ background: "rgba(124,58,237,0.2)", border: "1px solid rgba(124,58,237,0.3)" }}>
-              <Building2 size={24} style={{ color: "#A78BFA" }} />
+              style={{ background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.22)" }}>
+              <Building2 size={24} style={{ color: "#F97316" }} />
             </div>
             <h1 className="text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               机构注册入驻
             </h1>
-            <p className="text-sm mt-2" style={{ color: "#7c7aaa" }}>
+            <p className="text-sm mt-2" style={{ color: "#b45309" }}>
               加入 PurrChain 平台，帮助更多猫咪找到温暖的家
             </p>
           </motion.div>
@@ -171,7 +171,7 @@ const handleSubmit = async () => {
                 <div
                   className="w-7 h-7 rounded-full flex items-center justify-center text-xs transition-all"
                   style={{
-                    background: i <= step ? "linear-gradient(135deg, #7C3AED, #06B6D4)" : "rgba(109,58,238,0.08)",
+                    background: i <= step ? "linear-gradient(135deg, #F97316, #fbbf24)" : "rgba(249,115,22,0.12)",
                     color: i <= step ? "#fff" : "rgba(255,255,255,0.3)",
                     fontFamily: "'Space Grotesk', sans-serif",
                     boxShadow: i === step ? "0 0 15px rgba(124,58,237,0.5)" : "none",
@@ -179,12 +179,12 @@ const handleSubmit = async () => {
                 >
                   {i < step ? <CheckCircle size={14} /> : i + 1}
                 </div>
-                <span className="text-xs hidden sm:block" style={{ color: i <= step ? "#A78BFA" : "rgba(255,255,255,0.3)" }}>
+                <span className="text-xs hidden sm:block" style={{ color: i <= step ? "#F97316" : "rgba(255,255,255,0.3)" }}>
                   {s}
                 </span>
                 {i < STEPS.length - 1 && (
                   <div className="flex-1 h-px mx-2 hidden sm:block"
-                    style={{ background: i < step ? "rgba(167,139,250,0.4)" : "rgba(109,58,238,0.08)", minWidth: 20 }} />
+                    style={{ background: i < step ? "rgba(167,139,250,0.4)" : "rgba(249,115,22,0.12)", minWidth: 20 }} />
                 )}
               </div>
             ))}
@@ -286,7 +286,7 @@ const handleSubmit = async () => {
                       onUpload={() => update("photoUploaded", true)}
                     />
 
-                    <div className="mt-4 p-4 rounded-xl" style={{ background: "rgba(109,58,238,0.04)", border: "1px solid rgba(109,58,238,0.08)" }}>
+                    <div className="mt-4 p-4 rounded-xl" style={{ background: "rgba(109,58,238,0.04)", border: "1px solid rgba(249,115,22,0.12)" }}>
                       <label className="flex items-start gap-3 cursor-pointer">
                         <input
                           type="checkbox"
@@ -294,7 +294,7 @@ const handleSubmit = async () => {
                           onChange={(e) => update("agreeTerm", e.target.checked)}
                           className="mt-1 accent-purple-500"
                         />
-                        <span className="text-xs" style={{ color: "#4c4980" }}>
+                        <span className="text-xs" style={{ color: "#78350f" }}>
                           我已阅读并同意 PurrChain 平台合作协议，确认机构信息真实有效，
                           同意捐款直接到账机构钱包，平台不经手资金。*
                         </span>
@@ -319,13 +319,13 @@ const handleSubmit = async () => {
                       { label: "邮件", value: form.email },
                     ].map((item) => (
                       <div key={item.label} className="flex justify-between items-center py-2"
-                        style={{ borderBottom: "1px solid rgba(109,58,238,0.06)" }}>
-                        <span className="text-xs" style={{ color: "#7c7aaa", fontFamily: "'Space Grotesk', sans-serif" }}>{item.label}</span>
+                        style={{ borderBottom: "1px solid rgba(249,115,22,0.06)" }}>
+                        <span className="text-xs" style={{ color: "#b45309", fontFamily: "'Space Grotesk', sans-serif" }}>{item.label}</span>
                         <span className="text-xs text-white">{item.value || "—"}</span>
                       </div>
                     ))}
                   </div>
-                  <div className="p-4 rounded-xl" style={{ background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.2)" }}>
+                  <div className="p-4 rounded-xl" style={{ background: "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.12)" }}>
                     <p className="text-xs" style={{ color: "#C4B5FD" }}>
                       ⏱ 审核时间：3-5 个工作日
                       <br />
@@ -343,9 +343,9 @@ const handleSubmit = async () => {
                   onClick={() => setStep((s) => s - 1)}
                   className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm"
                   style={{
-                    background: "rgba(109,58,238,0.06)",
-                    color: "#4c4980",
-                    border: "1px solid rgba(109,58,238,0.08)",
+                    background: "rgba(249,115,22,0.06)",
+                    color: "#78350f",
+                    border: "1px solid rgba(249,115,22,0.12)",
                   }}
                 >
                   <ChevronLeft size={15} /> 上一步
@@ -356,10 +356,10 @@ const handleSubmit = async () => {
                 disabled={!canNext()}
                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm text-white transition-all"
                 style={{
-                  background: canNext() ? "linear-gradient(135deg, #7C3AED, #06B6D4)" : "rgba(109,58,238,0.08)",
+                  background: canNext() ? "linear-gradient(135deg, #F97316, #fbbf24)" : "rgba(249,115,22,0.12)",
                   color: canNext() ? "#fff" : "rgba(255,255,255,0.3)",
                   cursor: canNext() ? "pointer" : "default",
-                  boxShadow: canNext() ? "0 0 20px rgba(124,58,237,0.4)" : "none",
+                  boxShadow: canNext() ? "0 0 20px rgba(249,115,22,0.35)" : "none",
                   fontFamily: "'Space Grotesk', sans-serif"
                 }}
               >
@@ -379,11 +379,11 @@ function FormField({ label, icon, placeholder, value, onChange }: {
 }) {
   return (
     <div>
-      <label className="block text-xs mb-1.5" style={{ color: "#7c7aaa", fontFamily: "'Space Grotesk', sans-serif" }}>
+      <label className="block text-xs mb-1.5" style={{ color: "#b45309", fontFamily: "'Space Grotesk', sans-serif" }}>
         {label}
       </label>
       <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
-        style={{ background: "rgba(109,58,238,0.06)", border: "1px solid rgba(109,58,238,0.08)" }}>
+        style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.12)" }}>
         <span style={{ color: "#a8a6c8" }}>{icon}</span>
         <input
           className="flex-1 bg-transparent outline-none text-sm text-white placeholder-gray-600"
@@ -402,26 +402,26 @@ function UploadBox({ label, desc, uploaded, onUpload }: {
 }) {
   return (
     <div>
-      <label className="block text-xs mb-1.5" style={{ color: "#7c7aaa", fontFamily: "'Space Grotesk', sans-serif" }}>
+      <label className="block text-xs mb-1.5" style={{ color: "#b45309", fontFamily: "'Space Grotesk', sans-serif" }}>
         {label}
       </label>
       <button
         onClick={onUpload}
         className="w-full p-4 rounded-xl text-center transition-all"
         style={{
-          background: uploaded ? "rgba(124,58,237,0.1)" : "rgba(109,58,238,0.04)",
-          border: uploaded ? "1px solid rgba(124,58,237,0.4)" : "2px dashed rgba(109,58,238,0.15)",
+          background: uploaded ? "rgba(249,115,22,0.07)" : "rgba(109,58,238,0.04)",
+          border: uploaded ? "1px solid rgba(249,115,22,0.35)" : "2px dashed rgba(109,58,238,0.15)",
         }}
       >
         {uploaded ? (
-          <div className="flex items-center justify-center gap-2" style={{ color: "#A78BFA" }}>
+          <div className="flex items-center justify-center gap-2" style={{ color: "#F97316" }}>
             <CheckCircle size={16} />
             <span className="text-sm">已上传</span>
           </div>
         ) : (
           <div>
             <Upload size={20} className="mx-auto mb-2" style={{ color: "#a8a6c8" }} />
-            <div className="text-xs" style={{ color: "#7c7aaa" }}>
+            <div className="text-xs" style={{ color: "#b45309" }}>
               点击模拟上传
             </div>
             <div className="text-xs mt-1" style={{ color: "#a8a6c8" }}>{desc}</div>
