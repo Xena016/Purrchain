@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router";
 import { Sparkles, ArrowLeft, Loader2, Package } from "lucide-react";
@@ -136,7 +136,7 @@ export function Gacha() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: "#060614", fontFamily: "'Nunito', sans-serif" }}>
+    <div className="min-h-screen" style={{ background: "#f7f5ff", fontFamily: "'Nunito', sans-serif" }}>
       <Navbar />
 
       <div className="fixed inset-0 pointer-events-none">
@@ -150,7 +150,7 @@ export function Gacha() {
           initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 mb-8 text-sm"
-          style={{ color: "rgba(255,255,255,0.5)" }}
+          style={{ color: "#7c7aaa" }}
         >
           <ArrowLeft size={16} />
           {isZh ? "返回" : "Back"}
@@ -161,7 +161,7 @@ export function Gacha() {
           <h1 className="text-white mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: "1.8rem" }}>
             {isZh ? "装备抽卡" : "Equipment Gacha"}
           </h1>
-          <p className="text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
+          <p className="text-sm" style={{ color: "#7c7aaa" }}>
             {isZh ? "消耗抽卡券获得随机装备 NFT" : "Spend tickets to get random equipment NFTs"}
           </p>
         </motion.div>
@@ -173,7 +173,7 @@ export function Gacha() {
             <div className="text-3xl mb-1" style={{ color: "#FBBF24", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700 }}>
               {tickets === null ? "..." : tickets}
             </div>
-            <div className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
+            <div className="text-xs" style={{ color: "#7c7aaa" }}>
               {isZh ? "🎟️ 抽卡券" : "🎟️ Tickets"}
             </div>
           </div>
@@ -182,7 +182,7 @@ export function Gacha() {
             <div className="text-3xl mb-1" style={{ color: "#A78BFA", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700 }}>
               {materials === null ? "..." : materials}
             </div>
-            <div className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
+            <div className="text-xs" style={{ color: "#7c7aaa" }}>
               {isZh ? "🔩 材料碎片" : "🔩 Fragments"}
             </div>
           </div>
@@ -190,11 +190,11 @@ export function Gacha() {
 
         {/* 合成按钮 */}
         <div className="mb-6 p-4 rounded-2xl"
-          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          style={{ background: "rgba(109,58,238,0.04)", border: "1px solid rgba(109,58,238,0.08)" }}>
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm text-white mb-1">{isZh ? "碎片合成" : "Merge Fragments"}</div>
-              <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
+              <div className="text-xs" style={{ color: "#7c7aaa" }}>
                 {isZh ? "10 碎片 → 1 抽卡券" : "10 fragments → 1 ticket"}
               </div>
             </div>
@@ -202,7 +202,7 @@ export function Gacha() {
               disabled={isMerging || !materials || materials < 10 || !isConnected}
               className="px-4 py-2 rounded-xl text-sm flex items-center gap-2"
               style={{
-                background: materials && materials >= 10 && isConnected ? "rgba(124,58,237,0.3)" : "rgba(255,255,255,0.05)",
+                background: materials && materials >= 10 && isConnected ? "rgba(124,58,237,0.3)" : "rgba(109,58,238,0.06)",
                 border: "1px solid rgba(124,58,237,0.3)",
                 color: materials && materials >= 10 && isConnected ? "#A78BFA" : "rgba(255,255,255,0.3)",
                 cursor: materials && materials >= 10 && isConnected ? "pointer" : "not-allowed",
@@ -223,7 +223,7 @@ export function Gacha() {
               <div className="text-xs mb-1" style={{ color: v.color, fontFamily: "'Space Grotesk', sans-serif" }}>
                 {isZh ? v.label : v.labelEn}
               </div>
-              <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
+              <div className="text-xs" style={{ color: "#7c7aaa" }}>
                 {k === "3" ? "3%" : k === "2" ? "12%" : k === "1" ? "25%" : "60%"}
               </div>
             </div>
@@ -240,7 +240,7 @@ export function Gacha() {
 
         {/* 抽卡按钮 */}
         {!isConnected ? (
-          <div className="text-center text-sm py-4" style={{ color: "rgba(255,255,255,0.4)" }}>
+          <div className="text-center text-sm py-4" style={{ color: "#7c7aaa" }}>
             {isZh ? "请先连接钱包" : "Connect wallet first"}
           </div>
         ) : (
@@ -253,7 +253,7 @@ export function Gacha() {
             style={{
               background: tickets && tickets > 0
                 ? "linear-gradient(135deg, #F59E0B, #EC4899, #7C3AED)"
-                : "rgba(255,255,255,0.05)",
+                : "rgba(109,58,238,0.06)",
               boxShadow: tickets && tickets > 0 ? "0 0 40px rgba(245,158,11,0.3)" : "none",
               cursor: tickets && tickets > 0 ? "pointer" : "not-allowed",
               fontFamily: "'Space Grotesk', sans-serif",
@@ -269,7 +269,7 @@ export function Gacha() {
 
         {/* 获取票券提示 */}
         <div className="mt-6 p-4 rounded-2xl"
-          style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          style={{ background: "rgba(109,58,238,0.03)", border: "1px solid rgba(109,58,238,0.06)" }}>
           <div className="text-xs mb-2 text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             {isZh ? "如何获得抽卡券" : "How to get tickets"}
           </div>
@@ -279,7 +279,7 @@ export function Gacha() {
             { icon: "🔩", zh: "10 个材料碎片合成 1 张", en: "10 fragments → merge 1 ticket" },
           ].map((item) => (
             <div key={item.zh} className="flex items-center gap-2 py-1.5 text-xs"
-              style={{ color: "rgba(255,255,255,0.45)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+              style={{ color: "rgba(255,255,255,0.45)", borderBottom: "1px solid rgba(109,58,238,0.04)" }}>
               <span>{item.icon}</span>
               <span>{isZh ? item.zh : item.en}</span>
             </div>
@@ -325,7 +325,7 @@ export function Gacha() {
               <h2 className="text-white text-xl mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
                 {result.name}
               </h2>
-              <p className="text-sm mb-6" style={{ color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
+              <p className="text-sm mb-6" style={{ color: "#7c7aaa", lineHeight: 1.6 }}>
                 {result.lore}
               </p>
               <div className="grid grid-cols-3 gap-2 mb-6">
@@ -335,8 +335,8 @@ export function Gacha() {
                   { label: isZh ? "速度加成"   : "Speed+",  value: `+${(result.speedBonus  / 100).toFixed(1)}%` },
                 ].map((stat) => (
                   <div key={stat.label} className="p-2 rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                    <div className="text-xs mb-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{stat.label}</div>
+                    style={{ background: "rgba(109,58,238,0.06)", border: "1px solid rgba(109,58,238,0.08)" }}>
+                    <div className="text-xs mb-0.5" style={{ color: "#7c7aaa" }}>{stat.label}</div>
                     <div className="text-sm" style={{ color: "#A78BFA", fontFamily: "'Space Grotesk', sans-serif" }}>{stat.value}</div>
                   </div>
                 ))}

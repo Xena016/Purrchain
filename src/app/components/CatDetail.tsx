@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router";
 import { useApp } from "../context/AppContext";
 import { Heart, Home, Gamepad2, MapPin, ArrowLeft, X, Coins, Wallet, CheckCircle, AlertCircle } from "lucide-react";
@@ -35,7 +35,7 @@ export function CatDetail() {
 
   if (!cat) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#0a0819", color: "#fff" }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#f7f5ff", color: "#1e1b4b" }}>
         <div className="text-center">
           <p className="text-2xl mb-4">😿 找不到这只猫咪</p>
           <Link to="/dashboard" className="text-sm" style={{ color: "#7ec8e3" }}>返回档案馆</Link>
@@ -71,31 +71,31 @@ export function CatDetail() {
   };
 
   return (
-    <div className="min-h-screen pt-20" style={{ background: "#0a0819" }}>
+    <div className="min-h-screen pt-20" style={{ background: "#f7f5ff" }}>
       {/* Donate Modal */}
       {showDonate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.8)" }}>
-          <div className="w-full max-w-md rounded-3xl p-8" style={{ background: "#12102b", border: "1px solid rgba(247,165,65,0.2)" }}>
+          <div className="w-full max-w-md rounded-3xl p-8" style={{ background: "#ffffff", border: "1px solid rgba(247,165,65,0.2)" }}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl" style={{ color: "#fff", fontWeight: 700 }}>💝 捐款给 {cat.name}</h3>
+              <h3 className="text-xl" style={{ color: "#1e1b4b", fontWeight: 700 }}>💝 捐款给 {cat.name}</h3>
               <button onClick={() => { setShowDonate(false); setDonated(false); }} style={{ color: "#888", cursor: "pointer" }}><X size={20} /></button>
             </div>
 
             {!donated ? (
               <>
-                <p className="text-sm mb-5" style={{ color: "#9090b0", lineHeight: 1.7 }}>
+                <p className="text-sm mb-5" style={{ color: "#4c4980", lineHeight: 1.7 }}>
                   您的捐款将通过 <span style={{ color: "#7ec8e3" }}>DonationVault</span> 直接转入机构钱包，
                   平台完全不经手。每累计 0.1 AVAX 自动解锁一个成长阶段 NFT。
                 </p>
                 <div className="mb-5">
-                  <label className="text-sm mb-2 block" style={{ color: "#9090b0" }}>捐款金额 (AVAX)</label>
+                  <label className="text-sm mb-2 block" style={{ color: "#4c4980" }}>捐款金额 (AVAX)</label>
                   <div className="flex gap-2 mb-3">
                     {["0.05", "0.1", "0.5", "1.0"].map(v => (
                       <button key={v} onClick={() => setDonateAmount(v)}
                         className="flex-1 py-2 rounded-xl text-sm"
                         style={{
-                          background: donateAmount === v ? "rgba(247,165,65,0.2)" : "rgba(255,255,255,0.05)",
-                          border: donateAmount === v ? "1px solid rgba(247,165,65,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                          background: donateAmount === v ? "rgba(247,165,65,0.2)" : "rgba(109,58,238,0.06)",
+                          border: donateAmount === v ? "1px solid rgba(247,165,65,0.5)" : "1px solid rgba(109,58,238,0.08)",
                           color: donateAmount === v ? "#f7a541" : "#9090b0",
                           cursor: "pointer",
                         }}>
@@ -106,9 +106,9 @@ export function CatDetail() {
                   <input value={donateAmount} onChange={e => setDonateAmount(e.target.value)}
                     type="number" step="0.01" min="0.01"
                     className="w-full px-4 py-3 rounded-xl outline-none"
-                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(247,165,65,0.2)", color: "#f7a541" }} />
+                    style={{ background: "rgba(109,58,238,0.06)", border: "1px solid rgba(247,165,65,0.2)", color: "#f7a541" }} />
                 </div>
-                <div className="p-3 rounded-xl mb-5 text-sm" style={{ background: "rgba(78,205,196,0.06)", border: "1px solid rgba(78,205,196,0.15)", color: "#6060a0" }}>
+                <div className="p-3 rounded-xl mb-5 text-sm" style={{ background: "rgba(78,205,196,0.06)", border: "1px solid rgba(78,205,196,0.15)", color: "#7c7aaa" }}>
                   已累计捐款: <span style={{ color: "#f7a541" }}>{cat.donationTotal.toFixed(2)} AVAX</span>
                   {" "}· 下一阶段解锁还需 <span style={{ color: "#4ecdc4" }}>{Math.max(0, 0.1 - (cat.donationTotal % 0.1)).toFixed(2)} AVAX</span>
                 </div>
@@ -121,8 +121,8 @@ export function CatDetail() {
             ) : (
               <div className="text-center py-4 flex flex-col items-center gap-4">
                 <CheckCircle size={48} color="#4ecdc4" />
-                <h4 style={{ color: "#fff", fontWeight: 700 }}>捐款成功！</h4>
-                <p className="text-sm" style={{ color: "#9090b0" }}>感谢您对 {cat.name} 的爱心支持 💖<br />AVAX 已直接转入机构钱包，链上可查。</p>
+                <h4 style={{ color: "#1e1b4b", fontWeight: 700 }}>捐款成功！</h4>
+                <p className="text-sm" style={{ color: "#4c4980" }}>感谢您对 {cat.name} 的爱心支持 💖<br />AVAX 已直接转入机构钱包，链上可查。</p>
                 <button onClick={() => { setShowDonate(false); setDonated(false); }}
                   className="px-6 py-2 rounded-full text-sm"
                   style={{ background: "rgba(126,200,227,0.15)", color: "#7ec8e3", cursor: "pointer" }}>
@@ -137,15 +137,15 @@ export function CatDetail() {
       {/* Adopt Modal */}
       {showAdopt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.8)" }}>
-          <div className="w-full max-w-md rounded-3xl p-8" style={{ background: "#12102b", border: "1px solid rgba(78,205,196,0.2)" }}>
+          <div className="w-full max-w-md rounded-3xl p-8" style={{ background: "#ffffff", border: "1px solid rgba(78,205,196,0.2)" }}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl" style={{ color: "#fff", fontWeight: 700 }}>🏠 线下领养申请</h3>
+              <h3 className="text-xl" style={{ color: "#1e1b4b", fontWeight: 700 }}>🏠 线下领养申请</h3>
               <button onClick={() => { setShowAdopt(false); setAdopted(false); }} style={{ color: "#888", cursor: "pointer" }}><X size={20} /></button>
             </div>
 
             {!adopted ? (
               <>
-                <p className="text-sm mb-5 leading-relaxed" style={{ color: "#9090b0" }}>
+                <p className="text-sm mb-5 leading-relaxed" style={{ color: "#4c4980" }}>
                   提交线下领养申请后，机构将与您取得联系安排见面。领养成功后需缴纳
                   <span style={{ color: "#f7a541" }}>0.1 AVAX 保证金</span>（锁定 1 年，��访通过后退还），
                   并获得专属 Genesis NFT。
@@ -163,22 +163,22 @@ export function CatDetail() {
                         style={{ background: "rgba(78,205,196,0.15)", color: "#4ecdc4", border: "1px solid rgba(78,205,196,0.3)" }}>
                         {i + 1}
                       </div>
-                      <p className="text-sm" style={{ color: "#9090b0" }}>{step}</p>
+                      <p className="text-sm" style={{ color: "#4c4980" }}>{step}</p>
                     </div>
                   ))}
                 </div>
 
                 <button onClick={handleAdopt} disabled={adopting}
                   className="w-full py-4 rounded-xl"
-                  style={{ background: "linear-gradient(135deg, #4ecdc4, #7ec8e3)", color: "#fff", fontWeight: 700, cursor: "pointer", opacity: adopting ? 0.7 : 1 }}>
+                  style={{ background: "linear-gradient(135deg, #4ecdc4, #7ec8e3)", color: "#1e1b4b", fontWeight: 700, cursor: "pointer", opacity: adopting ? 0.7 : 1 }}>
                   {adopting ? "提交中..." : !walletConnected ? "🔗 连接钱包后申请" : "📋 提交领养申请"}
                 </button>
               </>
             ) : (
               <div className="text-center py-4 flex flex-col items-center gap-4">
                 <CheckCircle size={48} color="#4ecdc4" />
-                <h4 style={{ color: "#fff", fontWeight: 700 }}>申请已提交！</h4>
-                <p className="text-sm" style={{ color: "#9090b0" }}>机构将在 3 个工作日内与您联系 📞<br />猫咪状态已更新为"领养申请中"。</p>
+                <h4 style={{ color: "#1e1b4b", fontWeight: 700 }}>申请已提交！</h4>
+                <p className="text-sm" style={{ color: "#4c4980" }}>机构将在 3 个工作日内与您联系 📞<br />猫咪状态已更新为"领养申请中"。</p>
                 <button onClick={() => { setShowAdopt(false); setAdopted(false); }}
                   className="px-6 py-2 rounded-full text-sm"
                   style={{ background: "rgba(126,200,227,0.15)", color: "#7ec8e3", cursor: "pointer" }}>
@@ -193,9 +193,9 @@ export function CatDetail() {
       {/* Game Entry Modal */}
       {showGame && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.8)" }}>
-          <div className="w-full max-w-md rounded-3xl p-8" style={{ background: "#12102b", border: "1px solid rgba(168,85,247,0.2)" }}>
+          <div className="w-full max-w-md rounded-3xl p-8" style={{ background: "#ffffff", border: "1px solid rgba(168,85,247,0.2)" }}>
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl" style={{ color: "#fff", fontWeight: 700 }}>🎮 选择此猫进入游戏</h3>
+              <h3 className="text-xl" style={{ color: "#1e1b4b", fontWeight: 700 }}>🎮 选择此猫进入游戏</h3>
               <button onClick={() => setShowGame(false)} style={{ color: "#888", cursor: "pointer" }}><X size={20} /></button>
             </div>
 
@@ -203,8 +203,8 @@ export function CatDetail() {
               style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.15)" }}>
               <img src={cat.imageUrl} alt={cat.name} className="w-16 h-16 rounded-xl object-cover" />
               <div>
-                <p style={{ color: "#fff", fontWeight: 700 }}>{cat.name}</p>
-                <p className="text-sm" style={{ color: "#9090b0" }}>{cat.breed} · {STAGE_LABELS[cat.stage]}</p>
+                <p style={{ color: "#1e1b4b", fontWeight: 700 }}>{cat.name}</p>
+                <p className="text-sm" style={{ color: "#4c4980" }}>{cat.breed} · {STAGE_LABELS[cat.stage]}</p>
               </div>
             </div>
 
@@ -217,7 +217,7 @@ export function CatDetail() {
               ].map((item, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <span className="text-lg">{item.icon}</span>
-                  <p className="text-sm" style={{ color: "#9090b0" }}>{item.text}</p>
+                  <p className="text-sm" style={{ color: "#4c4980" }}>{item.text}</p>
                 </div>
               ))}
             </div>
@@ -233,7 +233,7 @@ export function CatDetail() {
               className="w-full py-4 rounded-xl disabled:opacity-40"
               style={{
                 background: "linear-gradient(135deg, #a855f7, #7ec8e3)",
-                color: "#fff", fontWeight: 700, cursor: nftClaimed ? "pointer" : "default"
+                color: "#1e1b4b", fontWeight: 700, cursor: nftClaimed ? "pointer" : "default"
               }}>
               🚀 进入游戏
             </button>
@@ -244,7 +244,7 @@ export function CatDetail() {
       {/* Main Content */}
       <div className="max-w-5xl mx-auto px-6 py-8">
         <Link to="/dashboard" className="inline-flex items-center gap-2 mb-6 text-sm"
-          style={{ color: "#6060a0" }}>
+          style={{ color: "#7c7aaa" }}>
           <ArrowLeft size={16} />
           返回档案馆
         </Link>
@@ -274,14 +274,14 @@ export function CatDetail() {
             </div>
 
             {/* NFT stages */}
-            <div className="mt-4 p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="mt-4 p-4 rounded-2xl" style={{ background: "rgba(109,58,238,0.03)", border: "1px solid rgba(109,58,238,0.06)" }}>
               <p className="text-sm mb-3" style={{ color: "#7ec8e3" }}>成长阶段 NFT</p>
               <div className="flex gap-2">
                 {[1, 2, 3, 4].map(s => (
                   <div key={s} className="flex-1 py-2 px-3 rounded-xl text-center text-xs"
                     style={{
-                      background: s <= cat.stage ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.03)",
-                      border: s <= cat.stage ? "1px solid rgba(168,85,247,0.35)" : "1px solid rgba(255,255,255,0.05)",
+                      background: s <= cat.stage ? "rgba(168,85,247,0.15)" : "rgba(109,58,238,0.03)",
+                      border: s <= cat.stage ? "1px solid rgba(168,85,247,0.35)" : "1px solid rgba(109,58,238,0.06)",
                       color: s <= cat.stage ? "#a855f7" : "#444466",
                     }}>
                     {s === 1 ? "幼" : s === 2 ? "少" : s === 3 ? "成" : "✨"}
@@ -294,21 +294,21 @@ export function CatDetail() {
           {/* Right: Info */}
           <div className="flex flex-col gap-6">
             <div>
-              <h1 className="text-4xl mb-1" style={{ color: "#fff", fontWeight: 900 }}>{cat.name}</h1>
-              <p className="text-sm" style={{ color: "#6060a0" }}>
+              <h1 className="text-4xl mb-1" style={{ color: "#1e1b4b", fontWeight: 900 }}>{cat.name}</h1>
+              <p className="text-sm" style={{ color: "#7c7aaa" }}>
                 {cat.gender === "male" ? "♂ 公猫" : "♀ 母猫"} · {cat.age} 岁 · {cat.breed}
               </p>
             </div>
 
             {/* Shelter */}
-            <div className="flex items-center gap-2 text-sm" style={{ color: "#9090b0" }}>
+            <div className="flex items-center gap-2 text-sm" style={{ color: "#4c4980" }}>
               <MapPin size={14} style={{ color: "#7ec8e3" }} />
               <span>收容机构：<span style={{ color: "#7ec8e3" }}>{cat.shelter}</span></span>
             </div>
 
             {/* Description */}
-            <div className="p-5 rounded-2xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <p className="text-sm leading-relaxed" style={{ color: "#9090b0" }}>{cat.desc}</p>
+            <div className="p-5 rounded-2xl" style={{ background: "rgba(109,58,238,0.03)", border: "1px solid rgba(109,58,238,0.06)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "#4c4980" }}>{cat.desc}</p>
             </div>
 
             {/* Donation stats */}
@@ -318,7 +318,7 @@ export function CatDetail() {
                 <Heart size={24} color="#ff6b6b" className="flex-shrink-0" />
                 <div>
                   <p className="text-sm" style={{ color: "#f7a541", fontWeight: 700 }}>{cat.donationTotal.toFixed(2)} AVAX 已获捐款</p>
-                  <p className="text-xs" style={{ color: "#6060a0" }}>来自爱心用户，已直达机构钱包</p>
+                  <p className="text-xs" style={{ color: "#7c7aaa" }}>来自爱心用户，已直达机构钱包</p>
                 </div>
               </div>
             )}
@@ -326,8 +326,8 @@ export function CatDetail() {
             {/* Blockchain info */}
             <div className="p-4 rounded-2xl text-xs space-y-2" style={{ background: "rgba(126,200,227,0.05)", border: "1px solid rgba(126,200,227,0.1)" }}>
               <p style={{ color: "#7ec8e3" }}>🔗 链上信息（Avalanche Fuji C-Chain）</p>
-              <p style={{ color: "#6060a0" }}>Cat ID: #{cat.id} · stageURIs[{cat.stage - 1}] 已激活</p>
-              <p style={{ color: "#6060a0" }}>状态: CatRegistry.CatStatus.{cat.status}</p>
+              <p style={{ color: "#7c7aaa" }}>Cat ID: #{cat.id} · stageURIs[{cat.stage - 1}] 已激活</p>
+              <p style={{ color: "#7c7aaa" }}>状态: CatRegistry.CatStatus.{cat.status}</p>
             </div>
 
             {/* Action Buttons */}

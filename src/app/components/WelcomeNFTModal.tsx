@@ -62,7 +62,7 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
         <button
           onClick={onClose}
           className="absolute top-4 right-4 z-10 p-2 rounded-full"
-          style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)", cursor: "pointer" }}
+          style={{ background: "rgba(255,255,255,0.1)", color: "#4c4980", cursor: "pointer" }}
         >
           <X size={16} />
         </button>
@@ -106,14 +106,14 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
           {/* Step 0: 领取 NFT */}
           {step === 0 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <h2 className="text-center mb-2" style={{ color: "#fff", fontFamily: "'Space Grotesk', sans-serif" }}>
+              <h2 className="text-center mb-2" style={{ color: "#1e1b4b", fontFamily: "'Space Grotesk', sans-serif" }}>
                 🎉 欢迎加入 PurrChain！
               </h2>
-              <p className="text-center text-sm mb-4" style={{ color: "rgba(255,255,255,0.6)", fontFamily: "'Nunito', sans-serif" }}>
+              <p className="text-center text-sm mb-4" style={{ color: "#4c4980", fontFamily: "'Nunito', sans-serif" }}>
                 领取当季猫咪全家福 NFT，开始你的爱猫之旅
               </p>
 
-              <div className="rounded-2xl p-4 mb-4" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div className="rounded-2xl p-4 mb-4" style={{ background: "rgba(109,58,238,0.06)", border: "1px solid rgba(109,58,238,0.08)" }}>
                 <div className="flex items-center gap-2 mb-2">
                   <Heart size={14} className="text-rose-400" />
                   <span className="text-xs" style={{ color: "#FCA5A5", fontFamily: "'Space Grotesk', sans-serif" }}>为什么帮助猫咪？</span>
@@ -151,10 +151,10 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
           {/* Step 1: 领取 PURR */}
           {step === 1 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <h2 className="text-center mb-2" style={{ color: "#fff", fontFamily: "'Space Grotesk', sans-serif" }}>
+              <h2 className="text-center mb-2" style={{ color: "#1e1b4b", fontFamily: "'Space Grotesk', sans-serif" }}>
                 🎊 NFT 领取成功！
               </h2>
-              <p className="text-center text-sm mb-4" style={{ color: "rgba(255,255,255,0.6)", fontFamily: "'Nunito', sans-serif" }}>
+              <p className="text-center text-sm mb-4" style={{ color: "#4c4980", fontFamily: "'Nunito', sans-serif" }}>
                 你还可以领取 20 $PURR 游戏代币
               </p>
 
@@ -165,14 +165,14 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
                     <div className="text-sm" style={{ color: "#FCD34D", fontFamily: "'Space Grotesk', sans-serif" }}>
                       +20 $PURR 代币
                     </div>
-                    <div className="text-xs" style={{ color: "rgba(255,255,255,0.5)", fontFamily: "'Nunito', sans-serif" }}>
+                    <div className="text-xs" style={{ color: "#7c7aaa", fontFamily: "'Nunito', sans-serif" }}>
                       用于购买游戏道具、升级装备
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="text-xs text-center mb-4" style={{ color: "rgba(255,255,255,0.4)", fontFamily: "'Nunito', sans-serif" }}>
+              <div className="text-xs text-center mb-4" style={{ color: "#7c7aaa", fontFamily: "'Nunito', sans-serif" }}>
                 每个钱包地址仅可领取一次
               </div>
 
@@ -198,10 +198,10 @@ export function WelcomeNFTModal({ onClose }: WelcomeNFTModalProps) {
           {step === 2 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center">
               <div className="text-4xl mb-3">🐾</div>
-              <h2 className="mb-2" style={{ color: "#fff", fontFamily: "'Space Grotesk', sans-serif" }}>
+              <h2 className="mb-2" style={{ color: "#1e1b4b", fontFamily: "'Space Grotesk', sans-serif" }}>
                 一切准备就绪！
               </h2>
-              <p className="text-sm mb-4" style={{ color: "rgba(255,255,255,0.6)", fontFamily: "'Nunito', sans-serif" }}>
+              <p className="text-sm mb-4" style={{ color: "#4c4980", fontFamily: "'Nunito', sans-serif" }}>
                 开始探索猫咪档案，找到你心仪的猫咪吧！
               </p>
               <button

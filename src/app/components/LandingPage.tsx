@@ -1,9 +1,9 @@
-import { Link } from "react-router";
+﻿import { Link } from "react-router";
 import { Heart, Shield, Gamepad2, Coins, ArrowRight, ChevronDown, Globe, Lock, Zap } from "lucide-react";
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen" style={{ background: "#0a0819", color: "#e8e8f0" }}>
+    <div className="min-h-screen" style={{ background: "#f7f5ff", color: "#1e1b4b" }}>
       {/* Hero Section */}
       <section className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 overflow-hidden">
         {/* Animated background */}
@@ -34,16 +34,16 @@ export function LandingPage() {
           </div>
 
           <h1 className="text-5xl sm:text-7xl" style={{ fontWeight: 900, lineHeight: 1.1, letterSpacing: "-0.02em" }}>
-            <span style={{ color: "#ffffff" }}>Purr</span>
+            <span style={{ color: "#1e1b4b" }}>Purr</span>
             <span style={{ background: "linear-gradient(135deg, #7ec8e3, #a855f7)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Chain</span>
           </h1>
 
-          <p className="text-xl sm:text-2xl max-w-2xl" style={{ color: "#9090b0", lineHeight: 1.6 }}>
+          <p className="text-xl sm:text-2xl max-w-2xl" style={{ color: "#4c4980", lineHeight: 1.6 }}>
             去中心化猫咪领养平台<br />
             <span style={{ color: "#f7a541" }}>用区块链的力量，守护每一只流浪猫咪</span>
           </p>
 
-          <p className="text-base max-w-xl" style={{ color: "#6060a0", lineHeight: 1.8 }}>
+          <p className="text-base max-w-xl" style={{ color: "#7c7aaa", lineHeight: 1.8 }}>
             通过捐款支持真实收容所，获得动态成长 NFT，
             在放置类游戏中养育虚拟猫咪。
             所有资金流向链上透明可查，捐款直达机构钱包，平台不经手。
@@ -73,8 +73,8 @@ export function LandingPage() {
       {/* Features Section */}
       <section className="py-24 px-6 max-w-6xl mx-auto">
         <div className="text-center mb-16">
-          <h2 className="text-4xl mb-4" style={{ color: "#fff", fontWeight: 800 }}>为什么是 PurrChain？</h2>
-          <p style={{ color: "#6060a0" }}>结合 Web3 与公益，打造透明、有趣、可持续的猫咪救助生态</p>
+          <h2 className="text-4xl mb-4" style={{ color: "#1e1b4b", fontWeight: 800 }}>为什么是 PurrChain？</h2>
+          <p style={{ color: "#7c7aaa" }}>结合 Web3 与公益，打造透明、有趣、可持续的猫咪救助生态</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -117,13 +117,13 @@ export function LandingPage() {
             },
           ].map((f, i) => (
             <div key={i} className="p-6 rounded-2xl transition-all hover:-translate-y-1"
-              style={{ background: "rgba(255,255,255,0.03)", border: `1px solid rgba(${f.color === "#7ec8e3" ? "126,200,227" : f.color === "#ff6b6b" ? "255,107,107" : f.color === "#f7a541" ? "247,165,65" : f.color === "#a855f7" ? "168,85,247" : f.color === "#4ecdc4" ? "78,205,196" : "255,215,0"},0.15)` }}>
+              style={{ background: "rgba(109,58,238,0.03)", border: `1px solid rgba(${f.color === "#7ec8e3" ? "126,200,227" : f.color === "#ff6b6b" ? "255,107,107" : f.color === "#f7a541" ? "247,165,65" : f.color === "#a855f7" ? "168,85,247" : f.color === "#4ecdc4" ? "78,205,196" : "255,215,0"},0.15)` }}>
               <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
                 style={{ background: `${f.color}20`, color: f.color }}>
                 {f.icon}
               </div>
-              <h3 className="text-lg mb-2" style={{ color: "#fff", fontWeight: 700 }}>{f.title}</h3>
-              <p className="text-sm leading-relaxed" style={{ color: "#6060a0" }}>{f.desc}</p>
+              <h3 className="text-lg mb-2" style={{ color: "#1e1b4b", fontWeight: 700 }}>{f.title}</h3>
+              <p className="text-sm leading-relaxed" style={{ color: "#7c7aaa" }}>{f.desc}</p>
             </div>
           ))}
         </div>
@@ -132,7 +132,7 @@ export function LandingPage() {
       {/* How it works */}
       <section className="py-24 px-6" style={{ background: "rgba(255,255,255,0.02)" }}>
         <div className="max-w-4xl mx-auto text-center mb-16">
-          <h2 className="text-4xl mb-4" style={{ color: "#fff", fontWeight: 800 }}>三步开始你的猫咪之旅</h2>
+          <h2 className="text-4xl mb-4" style={{ color: "#1e1b4b", fontWeight: 800 }}>三步开始你的猫咪之旅</h2>
         </div>
         <div className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-8">
           {[
@@ -143,8 +143,8 @@ export function LandingPage() {
             <div key={i} className="flex flex-col items-center text-center gap-4">
               <div className="text-5xl">{s.emoji}</div>
               <div className="text-sm px-3 py-1 rounded-full" style={{ background: "rgba(126,200,227,0.1)", color: "#7ec8e3" }}>{s.step}</div>
-              <h3 style={{ color: "#fff", fontWeight: 700 }}>{s.title}</h3>
-              <p className="text-sm" style={{ color: "#6060a0", lineHeight: 1.7 }}>{s.desc}</p>
+              <h3 style={{ color: "#1e1b4b", fontWeight: 700 }}>{s.title}</h3>
+              <p className="text-sm" style={{ color: "#7c7aaa", lineHeight: 1.7 }}>{s.desc}</p>
             </div>
           ))}
         </div>
@@ -153,8 +153,8 @@ export function LandingPage() {
       {/* NFT Types */}
       <section className="py-24 px-6 max-w-6xl mx-auto">
         <div className="text-center mb-16">
-          <h2 className="text-4xl mb-4" style={{ color: "#fff", fontWeight: 800 }}>NFT 生态系统</h2>
-          <p style={{ color: "#6060a0" }}>丰富的 NFT 类型，记录你与猫咪的每一段缘分</p>
+          <h2 className="text-4xl mb-4" style={{ color: "#1e1b4b", fontWeight: 800 }}>NFT 生态系统</h2>
+          <p style={{ color: "#7c7aaa" }}>丰富的 NFT 类型，记录你与猫咪的每一段缘分</p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           {[
@@ -166,7 +166,7 @@ export function LandingPage() {
             { emoji: "💎", name: "收藏", type: "Collection", desc: "出猎掉落，玩耍/同伴/睡觉系列", color: "#ff6b6b" },
           ].map((n, i) => (
             <div key={i} className="p-4 rounded-xl text-center"
-              style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${n.color}22` }}>
+              style={{ background: "rgba(109,58,238,0.03)", border: `1px solid ${n.color}22` }}>
               <div className="text-3xl mb-2">{n.emoji}</div>
               <div className="text-sm mb-1" style={{ color: n.color, fontWeight: 700 }}>{n.name}</div>
               <div className="text-xs" style={{ color: "#4a4a6a" }}>{n.desc}</div>
@@ -179,8 +179,8 @@ export function LandingPage() {
       <section className="py-24 px-6 text-center">
         <div className="max-w-2xl mx-auto flex flex-col items-center gap-6">
           <div className="text-6xl">😺</div>
-          <h2 className="text-4xl" style={{ color: "#fff", fontWeight: 800 }}>准备好了吗？</h2>
-          <p style={{ color: "#6060a0" }}>每一笔捐款，每一次领养，都在链上留下永久记录。<br />让我们一起，用科技守护每一只需要帮助的猫咪。</p>
+          <h2 className="text-4xl" style={{ color: "#1e1b4b", fontWeight: 800 }}>准备好了吗？</h2>
+          <p style={{ color: "#7c7aaa" }}>每一笔捐款，每一次领养，都在链上留下永久记录。<br />让我们一起，用科技守护每一只需要帮助的猫咪。</p>
           <div className="flex flex-col sm:flex-row gap-4">
             <Link to="/login"
               className="px-8 py-4 rounded-full transition-all hover:scale-105"
@@ -197,7 +197,7 @@ export function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-8 px-6 text-center border-t" style={{ borderColor: "rgba(255,255,255,0.05)", color: "#333355" }}>
+      <footer className="py-8 px-6 text-center border-t" style={{ borderColor: "rgba(109,58,238,0.06)", color: "#333355" }}>
         <p className="text-sm">© 2026 PurrChain · 部署于 Avalanche Fuji C-Chain (chainId: 43113) · <span style={{ color: "#f7a541" }}>链上透明，公益永存</span></p>
       </footer>
     </div>
