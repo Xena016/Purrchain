@@ -5,13 +5,13 @@
 // ============================================================
 
 export const ADDRESSES = {
-  catRegistry:   "0xA7002729B8CD1a01adc58eD4fD2A1F22491AfD81",
-  catNFT:        "0x1c23189c9DCDed2050008699576e28F303e2E138",
-  purrToken:     "0xBAc1d9887cD4bA082049A50b6e7024fd1ce9258c",
-  equipmentNFT:  "0x368A130859323B644Dc55f2371C6e056dE8003E6",
-  gameContract:  "0xb46cDF1e9A48912D12F9b3cD98766B5bEe8b9Afe",
-  donationVault: "0xE487579BA05d150d3cb0c0415F395B760f7280F2",
-  adoptionVault: "0xEf0C63083c78B24Ad4a232AA793723f633E67338",
+  catRegistry:   "0x93cC5116c36c23946A5D4a8648d2DA347aB55f21",
+  catNFT:        "0xcd30825Cd87c86Df851B87fdC857543FcA70caA9",
+  purrToken:     "0x590d75703D583fF057c0D589f7470e956Be8ed08",
+  equipmentNFT:  "0x80527f721940481ca3d75e7B57F196D1DC466c99",
+  gameContract:  "0x433434b57a7b45cD092A83DDfC7229192Be8a1B6",
+  donationVault: "0xD48037Df7eBaB0376CA97ee6861da507f44de94B",
+  adoptionVault: "0x16185c8393dcC3FEF7AE8943F7C84f61fC10C84E",
 } as const;
 
 // ============================================================
