@@ -1,9 +1,14 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router";
-import { Wallet, LogOut, Coins, ChevronDown, Heart, Gift, CreditCard, Image, ShieldCheck } from "lucide-react";
+import { Wallet, LogOut, Coins, ChevronDown, Heart, Gift, CreditCard, Image, ShieldCheck, Gamepad2, Building2 } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { getReadonlyContracts } from "../../lib/contracts";
 
-// Admin 密码（前端门控，仅防止误操作）
+const OWNER_ADDRESS   = "0x99d23e329CBF9989581De6b6D15A7d2C3DD342df";
+const ADMIN_ADDRESSES = [
+  "0xA80deB694775DD09e5141b2097A879c7419309c0",
+  "0xc3AE0Fd5d1Be2A5d19bb683E43fFa0D3991a074d",
+];
 const ADMIN_PASSWORD = "purrchain2024";
 
 export function Navbar() {
@@ -11,7 +16,12 @@ export function Navbar() {
     walletAddress, isConnected, purrBalance,
     connectWallet, disconnectWallet,
     lang, setLang,
+    starterCatClaimed, starterCatId,
   } = useApp();
+
+  const isOwner = walletAddress?.toLowerCase() === OWNER_ADDRESS.toLowerCase();
+  const isAdminWallet = isOwner || ADMIN_ADDRESSES.some(a => a.toLowerCase() === walletAddress?.toLowerCase());
+  const [isShelterApproved, setIsShelterApproved] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [myMenuOpen, setMyMenuOpen] = useState(false);
@@ -45,14 +55,23 @@ export function Navbar() {
 
   const handleAdminSubmit = () => {
     if (adminPwd === ADMIN_PASSWORD) {
-      setShowAdminModal(false);
-      setAdminPwd("");
-      setAdminErr(false);
+      setShowAdminModal(false); setAdminPwd(""); setAdminErr(false);
       navigate("/admin");
-    } else {
-      setAdminErr(true);
-    }
+    } else { setAdminErr(true); }
   };
+
+  const handleAdminClick = () => {
+    if (isAdminWallet) navigate("/admin");
+    else setShowAdminModal(true);
+  };
+
+  // 检查当前钱包是否为已审批机构
+  useEffect(() => {
+    if (!walletAddress) { setIsShelterApproved(false); return; }
+    getReadonlyContracts().catRegistry.isShelterApproved(walletAddress)
+      .then(v => setIsShelterApproved(v as boolean))
+      .catch(() => setIsShelterApproved(false));
+  }, [walletAddress]);
 
   const navLink = (to: string, labelZh: string, labelEn: string) => (
     <Link
@@ -90,14 +109,32 @@ export function Navbar() {
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-6">
           {navLink("/dashboard", "猫咪档案", "Cat Registry")}
-          {navLink("/institution/register", "机构注册", "Institution Register")}
+          {navLink("/institution/register", "机构注册", "Register Shelter")}
+          {/* 已审批机构显示管理入口 */}
+          {isConnected && isShelterApproved && (
+            <Link to="/institution/manage"
+              className="flex items-center gap-1.5 text-sm font-medium transition-colors"
+              style={{ color: location.pathname.startsWith("/institution/manage") ? "#F97316" : "#78350f", fontFamily: "'Nunito', sans-serif" }}>
+              <Building2 size={15} />
+              {isZh ? "机构管理" : "My Shelter"}
+            </Link>
+          )}
+          {/* 已领初始猫时显示游戏入口 */}
+          {isConnected && starterCatClaimed && starterCatId !== null && (
+            <Link to={`/game/${starterCatId}`}
+              className="flex items-center gap-1.5 text-sm font-medium transition-colors"
+              style={{ color: location.pathname.startsWith("/game") ? "#a855f7" : "#78350f", fontFamily: "'Nunito', sans-serif" }}>
+              <Gamepad2 size={15} />
+              {isZh ? "游戏" : "Game"}
+            </Link>
+          )}
         </div>
 
         {/* Right side */}
         <div className="hidden md:flex items-center gap-3">
           {/* Admin 入口 */}
           <button
-            onClick={() => setShowAdminModal(true)}
+            onClick={handleAdminClick}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all"
             style={{
               background: "rgba(249,115,22,0.08)",
@@ -245,7 +282,12 @@ export function Navbar() {
           <Link to="/institution/register" onClick={() => setMenuOpen(false)} className="text-sm font-medium" style={{ color: "#78350f" }}>
             {isZh ? "机构注册" : "Institution Register"}
           </Link>
-          <button onClick={() => { setMenuOpen(false); setShowAdminModal(true); }} className="text-left text-sm font-medium" style={{ color: "#c2410c" }}>
+          {isConnected && starterCatClaimed && starterCatId !== null && (
+            <Link to={`/game/${starterCatId}`} onClick={() => setMenuOpen(false)} className="flex items-center gap-1.5 text-sm font-medium" style={{ color: "#78350f" }}>
+              <Gamepad2 size={14} />{isZh ? "进入游戏" : "Game"}
+            </Link>
+          )}
+          <button onClick={() => { setMenuOpen(false); handleAdminClick(); }} className="text-left text-sm font-medium" style={{ color: "#c2410c" }}>
             {isZh ? "管理员入口" : "Admin"}
           </button>
           {!isConnected ? (

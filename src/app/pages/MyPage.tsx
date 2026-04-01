@@ -73,40 +73,157 @@ function TopupPanel({ isZh, purrBalance }: { isZh: boolean; purrBalance: string 
 }
 
 // ── NFT 展示 ──────────────────────────────────────────────
+// NFT 类型标签
+const NFT_TYPE_LABEL: Record<number, { zh: string; en: string; color: string }> = {
+  0: { zh: "Starter",       en: "Starter",        color: "#888" },
+  1: { zh: "云领养",         en: "CloudAdopted",   color: "#F97316" },
+  2: { zh: "Genesis ✨",     en: "Genesis ✨",      color: "#a855f7" },
+  3: { zh: "全家福",         en: "FamilyPortrait", color: "#16a34a" },
+  4: { zh: "初始猫",         en: "StarterCat",     color: "#0ea5e9" },
+  5: { zh: "收藏",           en: "Collection",     color: "#f59e0b" },
+};
+
+interface NFTItem {
+  tokenId: number;
+  nftType: number;
+  stage: number;
+  image: string;
+  name: string;
+}
+
+async function ipfsToHttp(uri: string): Promise<string> {
+  if (!uri) return "";
+  return uri.startsWith("ipfs://")
+    ? uri.replace("ipfs://", "https://ipfs.io/ipfs/")
+    : uri;
+}
+
+async function fetchNFTImage(tokenURIValue: string): Promise<string> {
+  if (!tokenURIValue) return "";
+  try {
+    const url = await ipfsToHttp(tokenURIValue);
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    const json = await res.json() as { image?: string; name?: string };
+    return json.image ? await ipfsToHttp(json.image) : "";
+  } catch { return ""; }
+}
+
 function NFTPanel({ isZh }: { isZh: boolean }) {
   const { walletAddress } = useApp();
-  const [loading, setLoading] = useState(true);
+  const [loading,  setLoading]  = useState(true);
+  const [nfts,     setNfts]     = useState<NFTItem[]>([]);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    // 暂时只展示说明，NFT 枚举需要更多合约支持
-    setLoading(false);
-  }, []);
+    if (!walletAddress) { setLoading(false); return; }
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true); setNfts([]);
+      try {
+        const { getReadonlyContracts } = await import("../../lib/contracts");
+        const c = getReadonlyContracts();
+        const total = Number(await c.catNFT.totalSupply());
+        setProgress(0);
+
+        const found: NFTItem[] = [];
+        // 批量查询，每批 10 个
+        for (let i = 0; i < total; i += 10) {
+          if (cancelled) return;
+          const batch = Array.from({ length: Math.min(10, total - i) }, (_, j) => i + j);
+          await Promise.all(batch.map(async (tokenId) => {
+            try {
+              const owner = await c.catNFT.ownerOf(tokenId);
+              if ((owner as string).toLowerCase() !== walletAddress.toLowerCase()) return;
+              const info = await c.catNFT.nftInfo(tokenId) as {
+                nftType: bigint; stage: bigint; tokenURIValue: string;
+              };
+              const nftType = Number(info.nftType);
+              const stage   = Number(info.stage);
+              const image   = await fetchNFTImage(info.tokenURIValue);
+              const typeInfo = NFT_TYPE_LABEL[nftType];
+              const name = stage > 0
+                ? `${typeInfo?.zh ?? "NFT"} Stage ${stage}`
+                : (typeInfo?.zh ?? "NFT");
+              found.push({ tokenId, nftType, stage, image, name });
+            } catch { /* token已销毁或其他错误，跳过 */ }
+          }));
+          setProgress(Math.round(((i + 10) / total) * 100));
+        }
+
+        if (!cancelled) setNfts(found.sort((a, b) => b.tokenId - a.tokenId));
+      } catch (e) {
+        console.error("NFT load error:", e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [walletAddress]);
+
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center py-16 gap-4">
+      <Loader2 size={28} className="animate-spin" style={{ color: "#F97316" }} />
+      <p className="text-sm" style={{ color: "#b45309" }}>
+        {isZh ? `正在读取链上 NFT…（${Math.min(progress, 100)}%）` : `Loading NFTs… (${Math.min(progress, 100)}%)`}
+      </p>
+    </div>
+  );
+
+  if (!walletAddress || nfts.length === 0) return (
+    <div className="text-center py-16">
+      <div className="text-5xl mb-4">🖼️</div>
+      <p className="font-bold mb-2" style={{ color: "#92400e" }}>{isZh ? "暂无 NFT" : "No NFTs yet"}</p>
+      <p className="text-sm max-w-xs mx-auto mb-4" style={{ color: "#b45309" }}>
+        {isZh ? "领取全家福、捐款云领养或完成线下领养后将在此显示" : "NFTs from portrait claims, donations, or adoptions will appear here"}
+      </p>
+      <a href={`https://testnet.snowtrace.io/address/${walletAddress}#tokentxnsErc721`}
+        target="_blank" rel="noreferrer"
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold"
+        style={{ background: "rgba(249,115,22,0.1)", color: "#F97316", border: "1px solid rgba(249,115,22,0.2)" }}>
+        <ExternalLink size={14} />{isZh ? "在 Snowtrace 查看" : "View on Snowtrace"}
+      </a>
+    </div>
+  );
 
   return (
     <div>
-      {loading ? (
-        <div className="flex items-center justify-center py-16"><Loader2 size={28} className="animate-spin" style={{ color: "#F97316" }} /></div>
-      ) : (
-        <div className="text-center py-16">
-          <div className="text-5xl mb-4">🖼️</div>
-          <p className="font-bold mb-2" style={{ color: "#92400e" }}>
-            {isZh ? "NFT 展示功能开发中" : "NFT Gallery Coming Soon"}
-          </p>
-          <p className="text-sm max-w-xs mx-auto" style={{ color: "#b45309" }}>
-            {isZh
-              ? "您可以在 Snowtrace 上查看您的 NFT 资产，或在猫咪详情页进行领养和捐款操作"
-              : "View your NFTs on Snowtrace, or visit cat detail pages to donate and adopt"}
-          </p>
-          <a
-            href={`https://testnet.snowtrace.io/address/${walletAddress}#tokentxnsErc721`}
-            target="_blank" rel="noreferrer"
-            className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl text-sm font-bold"
-            style={{ background: "rgba(249,115,22,0.1)", color: "#F97316", border: "1px solid rgba(249,115,22,0.2)" }}>
-            <ExternalLink size={14} />
-            {isZh ? "在 Snowtrace 查看" : "View on Snowtrace"}
-          </a>
-        </div>
-      )}
+      <p className="text-sm mb-4 font-medium" style={{ color: "#b45309" }}>
+        {isZh ? `共 ${nfts.length} 个 NFT` : `${nfts.length} NFTs`}
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        {nfts.map(nft => {
+          const typeInfo = NFT_TYPE_LABEL[nft.nftType];
+          return (
+            <div key={nft.tokenId} className="rounded-2xl overflow-hidden"
+              style={{ background: "#fff9f5", border: "1px solid rgba(249,115,22,0.12)" }}>
+              {/* 图片 */}
+              <div className="aspect-square relative overflow-hidden"
+                style={{ background: "rgba(249,115,22,0.06)" }}>
+                {nft.image ? (
+                  <img src={nft.image} alt={nft.name}
+                    className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-4xl">🐱</div>
+                )}
+              </div>
+              {/* 信息 */}
+              <div className="p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                    style={{ background: `${typeInfo?.color ?? "#888"}18`, color: typeInfo?.color ?? "#888", border: `1px solid ${typeInfo?.color ?? "#888"}30` }}>
+                    {isZh ? typeInfo?.zh : typeInfo?.en}
+                  </span>
+                </div>
+                <p className="text-xs font-bold truncate" style={{ color: "#92400e" }}>{nft.name}</p>
+                <p className="text-xs font-mono mt-0.5" style={{ color: "#d97706" }}>#{nft.tokenId}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

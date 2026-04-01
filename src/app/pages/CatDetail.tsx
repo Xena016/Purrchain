@@ -182,8 +182,8 @@ export function CatDetail() {
     ? appInfo : null;
   const appStatus = myApp ? Number(myApp.status) : -1;
 
-  // 是否可捐款（合约只接受 Available；CloudAdopted 实际上合约也会拒绝，所以只开放 Available）
-  const canDonate = cat?.status === "available";
+  // 是否可捐款（合约接受 Available 和 CloudAdopted 两种状态）
+  const canDonate = cat?.status === "available" || cat?.status === "cloudAdopted";
   // 是否可申请领养（Available 或 CloudAdopted）
   const canApply  = cat?.status === "available" || cat?.status === "cloudAdopted";
   // 是否已有我的申请在进行中
@@ -530,7 +530,7 @@ export function CatDetail() {
                   <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl text-xs"
                     style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.12)", color: "#b45309" }}>
                     <Info size={12} className="mt-0.5 flex-shrink-0" />
-                    {isZh ? "合约要求猫咪为 Available 状态才可捐款（CloudAdopted 状态不接受新捐款）" : "Donations require cat to be in Available status"}
+                    {isZh ? "仅 Available / CloudAdopted 状态的猫咪可接受捐款" : "Donations only available when cat is Available or CloudAdopted"}
                   </div>
                 )}
               </div>
