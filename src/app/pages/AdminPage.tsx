@@ -55,8 +55,11 @@ export function AdminPage() {
       const provider = new ethers.JsonRpcProvider("https://api.avax-test.network/ext/bc/C/rpc");
       const c = getReadonlyContracts();
       const latest = await provider.getBlockNumber();
+      // 合约今天部署，从当前区块往前 100000 块（约 2 天）开始扫，避免从区块 0 扫全链
+      const SCAN_WINDOW = 100000;
+      const fromBlock = Math.max(0, latest - SCAN_WINDOW);
       const events: ethers.Log[] = [];
-      for (let from = 0; from <= latest; from += 2000) {
+      for (let from = fromBlock; from <= latest; from += 2000) {
         const chunk = await provider.getLogs({
           address: ADDRESSES.catRegistry,
           // ShelterRegistered(address indexed shelter, string name, string location)
@@ -80,7 +83,10 @@ export function AdminPage() {
         })
       );
       setShelters(shelterList);
-    } catch { setError(isZh ? "读取链上数据失败" : "Failed to load chain data"); }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(isZh ? `读取链上数据失败：${msg.slice(0, 80)}` : `Failed to load chain data: ${msg.slice(0, 80)}`);
+    }
     finally { setLoading(false); }
   }, [isZh]);
 

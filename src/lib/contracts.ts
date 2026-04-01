@@ -40,6 +40,7 @@ export const CAT_REGISTRY_ABI = [
   "function addCat(string calldata _name, uint8 _age, string calldata _gender, string calldata _description, string[4] calldata _stageURIs) external",
   "function approveShelter(address _shelter) external",
   "function rejectShelter(address _shelter) external",
+  "function updateCatStageURI(uint256 _catId, uint8 _stage, string calldata _uri) external",
   "event ShelterRegistered(address indexed shelter, string name, string location)",
   "function shelters(address) view returns (string name, string location, address wallet, uint8 status)",
 ] as const;

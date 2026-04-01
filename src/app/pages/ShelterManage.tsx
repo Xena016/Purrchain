@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
-import { Plus, CheckCircle, AlertCircle, X, Loader2, ExternalLink, Cat } from "lucide-react";
+import { Plus, CheckCircle, AlertCircle, X, Loader2, ExternalLink, Cat, Home, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { Navbar } from "../components/Navbar";
 import { useApp } from "../context/AppContext";
 import { getContracts, getReadonlyContracts, ADDRESSES } from "../../lib/contracts";
@@ -39,6 +39,18 @@ interface CatRecord {
   status: number;
 }
 
+interface AdoptionApp {
+  catId: number;
+  catName: string;
+  applicant: string;
+  status: number;
+  depositAmount: string;
+}
+
+const APP_STATUS_ZH = ["已申请·待审批", "审批通过·待缴款", "已缴款·等回访", "取消中·待确认", "已完成", "失败", "已取消"];
+const APP_STATUS_EN = ["Applied·Pending", "Approved·Pay Deposit", "Deposit Paid·Awaiting Visit", "Cancelling", "Done", "Failed", "Cancelled"];
+const APP_STATUS_COLOR = ["#d97706","#16a34a","#a855f7","#ef4444","#16a34a","#888","#888"];
+
 const STATUS_LABEL: Record<number, { zh: string; en: string; color: string }> = {
   0: { zh: "可领养", en: "Available",        color: "#16a34a" },
   1: { zh: "云领养中", en: "Cloud Adopted",  color: "#F97316" },
@@ -51,11 +63,19 @@ export function ShelterManage() {
   const { signer, isConnected, connectWallet, walletAddress, lang } = useApp();
   const isZh = lang === "zh";
 
-  const [shelterStatus, setShelterStatus] = useState<number | null>(null);
-  const [shelterName,   setShelterName]   = useState("");
+  const [shelterStatus,   setShelterStatus]   = useState<number | null>(null);
+  const [shelterName,     setShelterName]     = useState("");
+  const [shelterNotFound, setShelterNotFound] = useState(false);
   const [myCats,        setMyCats]        = useState<CatRecord[]>([]);
   const [loadingCats,   setLoadingCats]   = useState(false);
   const [showForm,      setShowForm]      = useState(false);
+
+  // 领养申请管理
+  const [adoptionApps,   setAdoptionApps]   = useState<AdoptionApp[]>([]);
+  const [loadingApps,    setLoadingApps]    = useState(false);
+  const [showAdoptions,  setShowAdoptions]  = useState(true);
+  const [appActionLoading, setAppActionLoading] = useState<number | null>(null);
+  const [appActionResult,  setAppActionResult]  = useState<string | null>(null);
 
   // 表单状态
   const [form, setForm] = useState({
@@ -75,9 +95,20 @@ export function ShelterManage() {
         const info = await c.catRegistry.shelters(walletAddress) as {
           name: string; status: number;
         };
-        setShelterStatus(Number(info.status));
-        setShelterName(info.name || "");
-      } catch {}
+        const name = info.name || "";
+        setShelterName(name);
+        if (!name) {
+          // 链上没有这个地址的记录（name为空字符串说明从未注册）
+          setShelterNotFound(true);
+          setShelterStatus(null);
+        } else {
+          setShelterNotFound(false);
+          setShelterStatus(Number(info.status));
+        }
+      } catch {
+        setShelterNotFound(true);
+        setShelterStatus(null);
+      }
     };
     check();
   }, [walletAddress]);
@@ -111,6 +142,92 @@ export function ShelterManage() {
     };
     load();
   }, [walletAddress, shelterStatus]);
+
+  // 读取该机构名下猫咪的所有待处理领养申请
+  const loadAdoptionApps = useCallback(async () => {
+    if (!walletAddress || shelterStatus !== 1) return;
+    setLoadingApps(true);
+    try {
+      const c = getReadonlyContracts();
+      const total = Number(await c.catRegistry.catCount());
+      const apps: AdoptionApp[] = [];
+      for (let i = 0; i < total; i++) {
+        try {
+          const raw = await c.catRegistry.getCat(i) as { shelter: string; name: string };
+          if (raw.shelter.toLowerCase() !== walletAddress.toLowerCase()) continue;
+          const app = await c.adoptionVault.getApplication(i) as {
+            applicant: string; status: bigint; depositAmount: bigint;
+          };
+          const appStatus = Number(app.status);
+          // 只显示进行中的：0=已申请, 3=取消中
+          if (appStatus !== 0 && appStatus !== 3) continue;
+          if (app.applicant === ethers.ZeroAddress) continue;
+          apps.push({
+            catId: i,
+            catName: raw.name || `Cat #${i}`,
+            applicant: app.applicant,
+            status: appStatus,
+            depositAmount: parseFloat(ethers.formatEther(app.depositAmount)).toFixed(3),
+          });
+        } catch { /* 无申请或读取失败 */ }
+      }
+      setAdoptionApps(apps);
+    } catch (e) {
+      console.error("读取领养申请失败:", e);
+    } finally { setLoadingApps(false); }
+  }, [walletAddress, shelterStatus]);
+
+  useEffect(() => { loadAdoptionApps(); }, [loadAdoptionApps]);
+
+  // 审批领养申请
+  const handleApproveApp = async (catId: number) => {
+    if (!signer) { setAppActionResult(isZh ? "请先连接钱包" : "Connect wallet"); return; }
+    setAppActionLoading(catId); setAppActionResult(null);
+    try {
+      const c = getContracts(signer);
+      const tx = await (c.adoptionVault as unknown as { approveApplication: (id: number) => Promise<ethers.ContractTransactionResponse> }).approveApplication(catId);
+      await tx.wait();
+      setAppActionResult(isZh ? `✅ 已批准 Cat #${catId} 的领养申请` : `✅ Approved Cat #${catId}`);
+      await loadAdoptionApps();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setAppActionResult(isZh ? `❌ 失败：${msg.slice(0,60)}` : `❌ Failed: ${msg.slice(0,60)}`);
+    } finally { setAppActionLoading(null); }
+  };
+
+  // 拒绝领养申请
+  const handleRejectApp = async (catId: number) => {
+    if (!signer) { setAppActionResult(isZh ? "请先连接钱包" : "Connect wallet"); return; }
+    setAppActionLoading(catId * -1 - 1); setAppActionResult(null);
+    try {
+      const c = getContracts(signer);
+      const tx = await (c.adoptionVault as unknown as { rejectApplication: (id: number) => Promise<ethers.ContractTransactionResponse> }).rejectApplication(catId);
+      await tx.wait();
+      setAppActionResult(isZh ? `已拒绝 Cat #${catId} 的领养申请` : `Rejected Cat #${catId}`);
+      await loadAdoptionApps();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setAppActionResult(isZh ? `❌ 失败：${msg.slice(0,60)}` : `❌ Failed: ${msg.slice(0,60)}`);
+    } finally { setAppActionLoading(null); }
+  };
+
+  // 确认归还
+  const handleConfirmReturn = async (catId: number, healthy: boolean) => {
+    if (!signer) return;
+    setAppActionLoading(catId); setAppActionResult(null);
+    try {
+      const c = getContracts(signer);
+      const tx = await (c.adoptionVault as unknown as { confirmReturn: (id: number, h: boolean) => Promise<ethers.ContractTransactionResponse> }).confirmReturn(catId, healthy);
+      await tx.wait();
+      setAppActionResult(healthy
+        ? (isZh ? `✅ 已确认健康归还，保证金已退还` : `✅ Confirmed healthy return, deposit refunded`)
+        : (isZh ? `已确认不健康归还，保证金转给机构` : `Confirmed unhealthy return, deposit sent to shelter`));
+      await loadAdoptionApps();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setAppActionResult(`❌ ${msg.slice(0,60)}`);
+    } finally { setAppActionLoading(null); }
+  };
 
   const handleSubmit = async () => {
     if (!signer) { setTxError(isZh ? "请先连接钱包" : "Connect wallet first"); return; }
@@ -205,7 +322,7 @@ export function ShelterManage() {
   );
 
   // ── 未注册机构 ──────────────────────────────────────────
-  if (shelterStatus === null || shelterStatus === undefined) return (
+  if (shelterNotFound) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "#fffbf5" }}>
       <Navbar />
       <div className="text-center max-w-sm px-6">
@@ -258,6 +375,135 @@ export function ShelterManage() {
             style={{ background: "linear-gradient(135deg, #F97316, #fbbf24)", cursor: "pointer" }}>
             <Plus size={15} />{isZh ? "登记新猫咪" : "Add Cat"}
           </button>
+        </div>
+
+        {/* 领养申请管理 */}
+        <div className="mb-8 rounded-2xl overflow-hidden"
+          style={{ background: "#fff9f5", border: "1px solid rgba(249,115,22,0.12)" }}>
+          <button
+            onClick={() => setShowAdoptions(v => !v)}
+            className="w-full flex items-center justify-between px-5 py-4"
+            style={{ cursor: "pointer", background: "transparent" }}>
+            <div className="flex items-center gap-2">
+              <Home size={16} color="#F97316" />
+              <span className="font-bold" style={{ color: "#92400e" }}>
+                {isZh ? "领养申请管理" : "Adoption Requests"}
+              </span>
+              {adoptionApps.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-bold"
+                  style={{ background: "rgba(217,119,6,0.15)", color: "#d97706", border: "1px solid rgba(217,119,6,0.3)" }}>
+                  {adoptionApps.length}
+                </span>
+              )}
+            </div>
+            {showAdoptions ? <ChevronUp size={16} color="#b45309" /> : <ChevronDown size={16} color="#b45309" />}
+          </button>
+
+          {showAdoptions && (
+            <div className="px-5 pb-5">
+              {appActionResult && (
+                <div className="mb-3 px-4 py-2.5 rounded-xl text-xs font-semibold"
+                  style={{
+                    background: appActionResult.startsWith("✅") || appActionResult.startsWith("已确认健康") ? "rgba(22,163,74,0.1)" : "rgba(249,115,22,0.08)",
+                    color: appActionResult.startsWith("✅") || appActionResult.startsWith("已确认健康") ? "#16a34a" : "#c2410c",
+                    border: "1px solid currentColor",
+                  }}>
+                  {appActionResult}
+                </div>
+              )}
+
+              {loadingApps ? (
+                <div className="flex items-center justify-center py-8 gap-2">
+                  <Loader2 size={18} className="animate-spin" style={{ color: "#F97316" }} />
+                  <span className="text-sm" style={{ color: "#b45309" }}>{isZh ? "读取申请中…" : "Loading…"}</span>
+                </div>
+              ) : adoptionApps.length === 0 ? (
+                <div className="py-8 text-center">
+                  <div className="text-3xl mb-2">🏠</div>
+                  <p className="text-sm" style={{ color: "#b45309" }}>
+                    {isZh ? "暂无待处理的领养申请" : "No pending adoption requests"}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {adoptionApps.map(app => {
+                    const color = APP_STATUS_COLOR[app.status] ?? "#888";
+                    const label = isZh ? APP_STATUS_ZH[app.status] : APP_STATUS_EN[app.status];
+                    const isApprovingThis = appActionLoading === app.catId;
+                    const isRejectingThis = appActionLoading === (app.catId * -1 - 1);
+                    return (
+                      <div key={app.catId} className="p-4 rounded-2xl"
+                        style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.1)" }}>
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="font-bold text-sm" style={{ color: "#92400e" }}>{app.catName}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                                style={{ background: `${color}18`, color, border: `1px solid ${color}30` }}>
+                                {label}
+                              </span>
+                            </div>
+                            <p className="text-xs font-mono" style={{ color: "#d97706" }}>
+                              {isZh ? "申请人：" : "Applicant: "}{app.applicant.slice(0,8)}…{app.applicant.slice(-6)}
+                            </p>
+                          </div>
+                          <Clock size={14} color={color} />
+                        </div>
+
+                        {/* status=0: 待审批 → 审批/拒绝 */}
+                        {app.status === 0 && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              onClick={() => handleApproveApp(app.catId)}
+                              disabled={isApprovingThis || isRejectingThis}
+                              className="py-2.5 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                              style={{ background: isApprovingThis ? "rgba(22,163,74,0.4)" : "linear-gradient(135deg,#16a34a,#15803d)", cursor: "pointer", opacity: isApprovingThis ? 0.7 : 1 }}>
+                              {isApprovingThis ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                              {isZh ? "批准申请" : "Approve"}
+                            </button>
+                            <button
+                              onClick={() => handleRejectApp(app.catId)}
+                              disabled={isApprovingThis || isRejectingThis}
+                              className="py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+                              style={{ background: isRejectingThis ? "rgba(220,38,38,0.08)" : "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", color: "#dc2626", cursor: "pointer", opacity: isRejectingThis ? 0.7 : 1 }}>
+                              {isRejectingThis ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+                              {isZh ? "拒绝申请" : "Reject"}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* status=3: 用户申请取消，等机构确认归还 */}
+                        {app.status === 3 && (
+                          <div>
+                            <p className="text-xs mb-2" style={{ color: "#b45309" }}>
+                              {isZh ? "用户申请取消领养，请确认猫咪归还情况：" : "User requested cancellation. Confirm cat return:"}
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                onClick={() => handleConfirmReturn(app.catId, true)}
+                                disabled={isApprovingThis}
+                                className="py-2.5 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                                style={{ background: "linear-gradient(135deg,#16a34a,#15803d)", cursor: "pointer", opacity: isApprovingThis ? 0.7 : 1 }}>
+                                {isApprovingThis ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                                {isZh ? "健康归还" : "Healthy Return"}
+                              </button>
+                              <button
+                                onClick={() => handleConfirmReturn(app.catId, false)}
+                                disabled={isApprovingThis}
+                                className="py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+                                style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", color: "#dc2626", cursor: "pointer" }}>
+                                {isZh ? "不健康归还" : "Unhealthy Return"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 我的猫咪列表 */}

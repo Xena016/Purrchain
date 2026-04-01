@@ -8,6 +8,210 @@ import { ethers } from "ethers";
 
 type MyTab = "donations" | "adoptions" | "nfts" | "topup";
 
+// ── 捐赠记录面板 ──────────────────────────────────────────
+interface DonationRecord {
+  catId: number;
+  catName: string;
+  total: string;
+  remaining: string;
+}
+
+function DonationsPanel({ isZh }: { isZh: boolean }) {
+  const { walletAddress } = useApp();
+  const navigate = useNavigate();
+  const [loading,  setLoading]  = useState(true);
+  const [records,  setRecords]  = useState<DonationRecord[]>([]);
+
+  useEffect(() => {
+    if (!walletAddress) { setLoading(false); return; }
+    const load = async () => {
+      setLoading(true);
+      try {
+        const c = getReadonlyContracts();
+        const total = Number(await c.catRegistry.catCount());
+        const found: DonationRecord[] = [];
+        for (let i = 0; i < total; i++) {
+          try {
+            const donated = await c.donationVault.userCatDonation(walletAddress, i);
+            if ((donated as bigint) === 0n) continue;
+            const remaining = await c.donationVault.remainingToNextStage(walletAddress, i);
+            const raw = await c.catRegistry.getCat(i) as { name: string };
+            found.push({
+              catId: i,
+              catName: raw.name || `Cat #${i}`,
+              total: parseFloat(ethers.formatEther(donated as bigint)).toFixed(3),
+              remaining: parseFloat(ethers.formatEther(remaining as bigint)).toFixed(3),
+            });
+          } catch { /* 跳过读取失败的猫 */ }
+        }
+        setRecords(found);
+      } catch (e) {
+        console.error("捐赠记录读取失败:", e);
+      } finally { setLoading(false); }
+    };
+    load();
+  }, [walletAddress]);
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-16 gap-3">
+      <Loader2 size={24} className="animate-spin" style={{ color: "#F97316" }} />
+      <span className="text-sm" style={{ color: "#b45309" }}>{isZh ? "读取链上捐赠记录…" : "Loading donation records…"}</span>
+    </div>
+  );
+
+  if (records.length === 0) return (
+    <div className="text-center py-16">
+      <div className="text-5xl mb-4">💝</div>
+      <p className="font-bold mb-2" style={{ color: "#92400e" }}>{isZh ? "暂无捐赠记录" : "No donations yet"}</p>
+      <p className="text-sm max-w-xs mx-auto" style={{ color: "#b45309" }}>
+        {isZh ? "前往猫咪档案，为你心仪的猫咪捐款，记录将在这里展示" : "Visit the cat registry to donate. Records will appear here."}
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium mb-4" style={{ color: "#b45309" }}>
+        {isZh ? `共捐助了 ${records.length} 只猫咪` : `Donated to ${records.length} cat${records.length > 1 ? "s" : ""}`}
+      </p>
+      {records.map(r => (
+        <div key={r.catId}
+          onClick={() => navigate(`/cat/${r.catId}`)}
+          className="p-4 rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all"
+          style={{ background: "#fff9f5", border: "1px solid rgba(249,115,22,0.12)" }}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = "rgba(249,115,22,0.35)")}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(249,115,22,0.12)")}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+              style={{ background: "rgba(249,115,22,0.1)" }}>🐱</div>
+            <div>
+              <p className="font-bold text-sm" style={{ color: "#92400e" }}>{r.catName}</p>
+              <p className="text-xs" style={{ color: "#b45309" }}>Cat #{r.catId}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-sm font-black" style={{ color: "#F97316" }}>{r.total} AVAX</p>
+            <p className="text-xs" style={{ color: "#16a34a" }}>
+              {isZh ? `距下阶段 ${r.remaining}` : `${r.remaining} to next`}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── 领养记录面板 ──────────────────────────────────────────
+const APP_STATUS_LABEL_MY = {
+  zh: ["已申请·待审批", "审批通过·待缴款", "已缴款·等回访", "取消中·待确认", "领养完成", "领养失败", "已取消"],
+  en: ["Applied · Pending", "Approved · Pay Deposit", "Deposit Paid · Awaiting Visit", "Cancelling", "Completed", "Failed", "Cancelled"],
+};
+const APP_STATUS_COLOR_MY = ["#d97706","#16a34a","#a855f7","#ef4444","#16a34a","#888","#888"];
+
+interface AdoptionRecord {
+  catId: number;
+  catName: string;
+  status: number;
+  depositAmount: string;
+}
+
+function AdoptionsPanel({ isZh }: { isZh: boolean }) {
+  const { walletAddress } = useApp();
+  const navigate = useNavigate();
+  const [loading,  setLoading]  = useState(true);
+  const [records,  setRecords]  = useState<AdoptionRecord[]>([]);
+
+  useEffect(() => {
+    if (!walletAddress) { setLoading(false); return; }
+    const load = async () => {
+      setLoading(true);
+      try {
+        const c = getReadonlyContracts();
+        const total = Number(await c.catRegistry.catCount());
+        const found: AdoptionRecord[] = [];
+        for (let i = 0; i < total; i++) {
+          try {
+            const app = await c.adoptionVault.getApplication(i) as {
+              applicant: string; status: bigint; depositAmount: bigint;
+            };
+            if (app.applicant.toLowerCase() !== walletAddress.toLowerCase()) continue;
+            const status = Number(app.status);
+            if (status === 6) continue; // 已取消的不显示
+            const raw = await c.catRegistry.getCat(i) as { name: string };
+            found.push({
+              catId: i,
+              catName: raw.name || `Cat #${i}`,
+              status,
+              depositAmount: parseFloat(ethers.formatEther(app.depositAmount)).toFixed(3),
+            });
+          } catch { /* 无申请或读取失败，跳过 */ }
+        }
+        setRecords(found);
+      } catch (e) {
+        console.error("领养记录读取失败:", e);
+      } finally { setLoading(false); }
+    };
+    load();
+  }, [walletAddress]);
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-16 gap-3">
+      <Loader2 size={24} className="animate-spin" style={{ color: "#F97316" }} />
+      <span className="text-sm" style={{ color: "#b45309" }}>{isZh ? "读取领养记录…" : "Loading adoption records…"}</span>
+    </div>
+  );
+
+  if (records.length === 0) return (
+    <div className="text-center py-16">
+      <div className="text-5xl mb-4">🏠</div>
+      <p className="font-bold mb-2" style={{ color: "#92400e" }}>{isZh ? "暂无领养记录" : "No adoptions yet"}</p>
+      <p className="text-sm max-w-xs mx-auto" style={{ color: "#b45309" }}>
+        {isZh ? "申请线下领养后，领养流程记录将在这里展示" : "Apply for in-person adoption. Records will appear here."}
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium mb-4" style={{ color: "#b45309" }}>
+        {isZh ? `${records.length} 条领养记录` : `${records.length} adoption record${records.length > 1 ? "s" : ""}`}
+      </p>
+      {records.map(r => {
+        const color = APP_STATUS_COLOR_MY[r.status] ?? "#888";
+        const label = (isZh ? APP_STATUS_LABEL_MY.zh : APP_STATUS_LABEL_MY.en)[r.status] ?? "";
+        return (
+          <div key={r.catId}
+            onClick={() => navigate(`/cat/${r.catId}`)}
+            className="p-4 rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all"
+            style={{ background: "#fff9f5", border: "1px solid rgba(249,115,22,0.12)" }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = "rgba(249,115,22,0.35)")}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(249,115,22,0.12)")}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                style={{ background: "rgba(249,115,22,0.1)" }}>🏠</div>
+              <div>
+                <p className="font-bold text-sm" style={{ color: "#92400e" }}>{r.catName}</p>
+                <p className="text-xs font-mono" style={{ color: "#b45309" }}>Cat #{r.catId}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-xs px-2 py-1 rounded-full font-semibold"
+                style={{ background: `${color}18`, color, border: `1px solid ${color}30` }}>
+                {label}
+              </span>
+              {r.depositAmount !== "0.000" && (
+                <p className="text-xs mt-1" style={{ color: "#b45309" }}>
+                  {isZh ? `保证金 ${r.depositAmount} AVAX` : `Deposit: ${r.depositAmount} AVAX`}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const TABS: { id: MyTab; icon: React.ReactNode; zh: string; en: string }[] = [
   { id: "donations", icon: <Heart size={16} />,    zh: "捐赠记录", en: "Donations" },
   { id: "adoptions", icon: <Gift size={16} />,     zh: "领养记录", en: "Adoptions" },
@@ -297,14 +501,8 @@ export function MyPage() {
 
         {/* Tab content */}
         <div className="p-6 rounded-3xl" style={{ background: "#fff9f5", border: "1px solid rgba(249,115,22,0.1)" }}>
-          {activeTab === "donations" && (
-            <EmptyState emoji="💝" titleZh="暂无捐赠记录" titleEn="No donations yet"
-              descZh="前往猫咪档案，为你心仪的猫咪捐款，记录将在这里展示" descEn="Visit the cat registry to donate. Records will appear here." isZh={isZh} />
-          )}
-          {activeTab === "adoptions" && (
-            <EmptyState emoji="🏠" titleZh="暂无领养记录" titleEn="No adoptions yet"
-              descZh="申请线下领养后，领养流程记录将在这里展示" descEn="Apply for in-person adoption. Records will appear here." isZh={isZh} />
-          )}
+          {activeTab === "donations" && <DonationsPanel isZh={isZh} />}
+          {activeTab === "adoptions" && <AdoptionsPanel isZh={isZh} />}
           {activeTab === "nfts" && <NFTPanel isZh={isZh} />}
           {activeTab === "topup" && <TopupPanel isZh={isZh} purrBalance={purrBalance} />}
         </div>
