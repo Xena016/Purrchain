@@ -37,6 +37,9 @@ export const CAT_REGISTRY_ABI = [
   "function getCat(uint256 _catId) view returns (tuple(uint256 id, string name, uint8 age, string gender, string description, string[4] stageURIs, address shelter, uint8 status))",
   "function isShelterApproved(address _shelter) view returns (bool)",
   "function registerShelter(string calldata _name, string calldata _location) external",
+  "function addCat(string calldata _name, uint8 _age, string calldata _gender, string calldata _description, string[4] calldata _stageURIs) external",
+  "function approveShelter(address _shelter) external",
+  "function rejectShelter(address _shelter) external",
   "event ShelterRegistered(address indexed shelter, string name, string location)",
   "function shelters(address) view returns (string name, string location, address wallet, uint8 status)",
 ] as const;

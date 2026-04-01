@@ -59,19 +59,20 @@ export function AdminPage() {
       for (let from = 0; from <= latest; from += 2000) {
         const chunk = await provider.getLogs({
           address: ADDRESSES.catRegistry,
-          topics: [ethers.id("ShelterRegistered(address,string)")],
+          // ShelterRegistered(address indexed shelter, string name, string location)
+          topics: ["0xd77472e230176dcc3b63ebe73b71039773ff62dfb43d8e850824df0ddb2ae797"],
           fromBlock: from, toBlock: Math.min(from + 1999, latest),
         });
         events.push(...chunk);
       }
       const iface = new ethers.Interface([
-        "event ShelterRegistered(address indexed shelter, string name)",
+        "event ShelterRegistered(address indexed shelter, string name, string location)",
       ]);
       const shelterList: ShelterInfo[] = await Promise.all(
         events.map(async (event) => {
           const addr = "0x" + event.topics[1].slice(26);
           let name = "", location = "";
-          try { const p = iface.parseLog({ topics: [...event.topics], data: event.data }); name = p?.args[1] ?? ""; } catch {}
+          try { const p = iface.parseLog({ topics: [...event.topics], data: event.data }); name = p?.args[1] ?? ""; location = p?.args[2] ?? ""; } catch {}
           try {
             const info = await c.catRegistry.shelters(addr) as { name: string; location: string; wallet: string; status: number };
             return { address: addr, name: info.name || name, location: info.location || location, wallet: info.wallet || addr, status: Number(info.status) };

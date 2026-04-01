@@ -77,7 +77,7 @@ const handleSubmit = async () => {
               style={{ background: "rgba(249,115,22,0.12)", border: "2px solid rgba(249,115,22,0.35)" }}>
               <CheckCircle size={36} style={{ color: "#F97316" }} />
             </div>
-            <h2 className="mb-3 text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            <h2 className="mb-3" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
               提交成功！
             </h2>
             <p className="mb-2 text-sm" style={{ color: "#78350f", fontFamily: "'Nunito', sans-serif" }}>
@@ -94,7 +94,7 @@ const handleSubmit = async () => {
               style={{ background: "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.12)" }}>
               <div className="flex items-center gap-2 mb-2">
                 <AlertCircle size={14} style={{ color: "#F97316" }} />
-                <span className="text-xs text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>注册信息</span>
+                <span className="text-xs" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e1b4b" }}>注册信息</span>
               </div>
               <div className="text-xs space-y-1" style={{ color: "#b45309", fontFamily: "'Nunito', sans-serif" }}>
                 <div>机构名称：{form.name}</div>
@@ -156,7 +156,7 @@ const handleSubmit = async () => {
               style={{ background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.22)" }}>
               <Building2 size={24} style={{ color: "#F97316" }} />
             </div>
-            <h1 className="text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            <h1 className="" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e1b4b" }}>
               机构注册入驻
             </h1>
             <p className="text-sm mt-2" style={{ color: "#b45309" }}>
@@ -202,7 +202,7 @@ const handleSubmit = async () => {
             <AnimatePresence mode="wait">
               {step === 0 && (
                 <motion.div key="step0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                  <h3 className="text-white mb-5" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  <h3 className="mb-5" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e1b4b" }}>
                     机构基本信息
                   </h3>
                   <div className="space-y-4">
@@ -239,7 +239,7 @@ const handleSubmit = async () => {
 
               {step === 1 && (
                 <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                  <h3 className="text-white mb-5" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  <h3 className="mb-5" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e1b4b" }}>
                     联系方式
                   </h3>
                   <div className="space-y-4">
@@ -269,7 +269,7 @@ const handleSubmit = async () => {
 
               {step === 2 && (
                 <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                  <h3 className="text-white mb-5" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  <h3 className="mb-5" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e1b4b" }}>
                     上传资质证明
                   </h3>
                   <div className="space-y-4">
@@ -306,7 +306,7 @@ const handleSubmit = async () => {
 
               {step === 3 && (
                 <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                  <h3 className="text-white mb-5" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  <h3 className="mb-5" style={{ fontFamily: "'Space Grotesk', sans-serif", color: "#1e1b4b" }}>
                     确认提交
                   </h3>
                   <div className="space-y-3 mb-5">
@@ -321,7 +321,7 @@ const handleSubmit = async () => {
                       <div key={item.label} className="flex justify-between items-center py-2"
                         style={{ borderBottom: "1px solid rgba(249,115,22,0.06)" }}>
                         <span className="text-xs" style={{ color: "#b45309", fontFamily: "'Space Grotesk', sans-serif" }}>{item.label}</span>
-                        <span className="text-xs text-white">{item.value || "—"}</span>
+                        <span className="text-xs" style={{ color: "#1e1b4b" }}>{item.value || "—"}</span>
                       </div>
                     ))}
                   </div>
@@ -386,11 +386,11 @@ function FormField({ label, icon, placeholder, value, onChange }: {
         style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.12)" }}>
         <span style={{ color: "#a8a6c8" }}>{icon}</span>
         <input
-          className="flex-1 bg-transparent outline-none text-sm text-white placeholder-gray-600"
+          className="flex-1 bg-transparent outline-none text-sm placeholder-gray-400"
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          style={{ fontFamily: "'Nunito', sans-serif" }}
+          style={{ fontFamily: "'Nunito', sans-serif", color: "#1e1b4b" }}
         />
       </div>
     </div>

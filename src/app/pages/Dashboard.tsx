@@ -28,9 +28,12 @@ const GENDER_LABEL = {
 // ============================================================
 
 export function Dashboard() {
-  const { nftClaimed, isConnected, lang } = useApp();
+  const { nftClaimed, welcomeClaimed, isConnected, lang } = useApp();
   const isZh = lang === "zh";
-  const [showModal, setShowModal] = useState(!nftClaimed && isConnected);
+  // 弹窗条件：已连接钱包，且（未领全家福 OR 已领全家福但未领PURR）
+  const [showModal, setShowModal] = useState(
+    isConnected && (!nftClaimed || !welcomeClaimed)
+  );
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | CatStatus>("all");
   const [cats, setCats] = useState<ChainCat[]>([]);
