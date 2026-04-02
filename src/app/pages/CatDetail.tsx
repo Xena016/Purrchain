@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { ethers } from "ethers";
@@ -170,7 +170,7 @@ export function CatDetail() {
     c.donationVault.userCatDonation(walletAddress, catId)
       .then(v => setDonationTotal(parseFloat(ethers.formatEther(v as bigint)).toFixed(3)))
       .catch(() => {});
-    c.donationVault.remainingToNextMint(walletAddress, catId)
+    c.donationVault.remainingToNextStage(walletAddress, catId)
       .then(v => setRemainingToNext(parseFloat(ethers.formatEther(v as bigint)).toFixed(3)))
       .catch(() => {});
   }, [walletAddress, catId, cat]);

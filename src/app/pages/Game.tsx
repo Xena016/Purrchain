@@ -214,9 +214,13 @@ export function Game() {
 
   // ── 游戏状态 ─────────────────────────────────────────────
   const [catState, setCatState]   = useState<CatState>("idle");
-  const [stamina,  setStamina]    = useState(5);
+  const [stamina,  setStamina]    = useState(() => parseInt(localStorage.getItem(`stamina_${catId}`) || "5"));
   const [fragments, setFragments] = useState(0);
-  const [purr, setPurr]           = useState(purrBalance);
+  const [purr, setPurr]           = useState(() => {
+    const saved = localStorage.getItem(`purr_${catId}`);
+    return saved !== null ? saved : purrBalance;
+  });
+  const [staminaRestore, setStaminaRestore] = useState<number>(() => parseInt(localStorage.getItem(`stamina_restore_${catId}`) || "0"));
   const [showShop, setShowShop]   = useState(false);
   const [showHuntModal, setShowHuntModal] = useState(false);
   const [huntConfig, setHuntConfig] = useState<{ duration: HuntDuration; item: HuntItem; booster: boolean }>({
@@ -227,7 +231,13 @@ export function Game() {
   const [rewards, setRewards]     = useState<Reward[]>([]);
   const [showRewards, setShowRewards] = useState(false);
   const [inventory, setInventory] = useState<{ fragments: number; items: string[] }>({ fragments: 0, items: [] });
+  const [foodCount,    setFoodCount]    = useState(() => parseInt(localStorage.getItem(`food_${catId}`) || "0"));
+  const [canCount,     setCanCount]     = useState(() => parseInt(localStorage.getItem(`can_${catId}`) || "0"));
+  const [boosterCount, setBoosterCount] = useState(() => parseInt(localStorage.getItem(`booster_${catId}`) || "0"));
+  const [toast, setToast] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
   useEffect(() => {
     const savedHunt = localStorage.getItem(`hunt_${catId}`);
@@ -245,6 +255,13 @@ export function Game() {
       }
     }
   }, [catId]);
+
+  // Persist purr and stamina
+  useEffect(() => { localStorage.setItem(`purr_${catId}`, String(purr)); }, [purr, catId]);
+  useEffect(() => { localStorage.setItem(`stamina_${catId}`, String(stamina)); }, [stamina, catId]);
+  useEffect(() => { localStorage.setItem(`food_${catId}`, String(foodCount)); }, [foodCount, catId]);
+  useEffect(() => { localStorage.setItem(`can_${catId}`, String(canCount)); }, [canCount, catId]);
+  useEffect(() => { localStorage.setItem(`booster_${catId}`, String(boosterCount)); }, [boosterCount, catId]);
 
   useEffect(() => {
     if (hunt && catState === "hunting") {
@@ -287,17 +304,38 @@ export function Game() {
     let actualMs = dur.ms;
     if (huntConfig.booster) actualMs = Math.max(actualMs * 0.5, dur.ms * 0.1);
     const itemCost = ITEMS[huntConfig.item].cost;
-    if (huntConfig.booster && purr < 10 + itemCost) return;
-    if (!huntConfig.booster && purr < itemCost) return;
+    const purrNum = typeof purr === "string" ? parseFloat(purr) : purr;
+    if (huntConfig.booster && purrNum < 10 + itemCost) { showToast("❌ PURR 不足！"); return; }
+    if (!huntConfig.booster && purrNum < itemCost) { showToast("❌ PURR 不足！"); return; }
     const cost = itemCost + (huntConfig.booster ? 10 : 0);
-    setPurr(p => p - cost); setStamina(s => s - dur.stamina);
+    setPurr((p: any) => (parseFloat(String(p)) - cost).toFixed(0)); setStamina(s => s - dur.stamina);
     const newHunt: HuntState = { active: true, startTime: Date.now(), duration: actualMs, durationLabel: huntConfig.duration, item: huntConfig.item, useBooster: huntConfig.booster };
     setHunt(newHunt); localStorage.setItem(`hunt_${catId}`, JSON.stringify(newHunt));
     setCatState("hunting"); setTimeLeft(Math.ceil(actualMs / 1000)); setShowHuntModal(false);
   };
 
   const formatTime = (s: number) => { if (s <= 0) return "0s"; const m = Math.floor(s / 60); const sec = s % 60; return m > 0 ? `${m}m ${sec}s` : `${sec}s`; };
-  const buyItem = (type: string, cost: number) => { if (purr < cost) return; setPurr(p => p - cost); if (type === "stamina") setStamina(s => Math.min(5, s + 1)); };
+  const buyItem = (type: string, cost: number, name: string) => {
+    const purrNum = typeof purr === "string" ? parseFloat(purr) : purr;
+    if (purrNum < cost) { showToast("❌ PURR 不足！"); return; }
+    setPurr((p: any) => (parseFloat(String(p)) - cost).toFixed(0));
+    if (type === "stamina") {
+      setStamina(s => Math.min(5, s + 1));
+      showToast("✅ 体力恢复 +1");
+    } else if (type === "food") {
+      setFoodCount(c => c + 1);
+      setInventory(inv => ({ ...inv, items: [...inv.items, "🐟 猫粮"] }));
+      showToast("✅ 购买猫粮 x1");
+    } else if (type === "can") {
+      setCanCount(c => c + 1);
+      setInventory(inv => ({ ...inv, items: [...inv.items, "🥫 罐罐"] }));
+      showToast("✅ 购买罐罐 x1");
+    } else if (type === "booster") {
+      setBoosterCount(c => c + 1);
+      setInventory(inv => ({ ...inv, items: [...inv.items, "⚡ 加速符"] }));
+      showToast("✅ 购买加速符 x1");
+    }
+  };
 
   // ── 加载中 / 错误 早退 ───────────────────────────────────
   if (catLoading) return (
@@ -431,6 +469,23 @@ export function Game() {
               )}
             </div>
             <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #ddd6fe" }}>
+              <div className="text-xs font-bold mb-2 flex items-center justify-between" style={{ color: "#92400e", fontFamily: "'Space Grotesk', sans-serif" }}>
+                <span>🎴 抽卡</span>
+              </div>
+              <div className="text-xs mb-2" style={{ color: "#7c7aaa" }}>碎片：{inventory.fragments} / 10 = {Math.floor(inventory.fragments/10)} 券</div>
+              <button
+                onClick={() => { if (inventory.fragments >= 10) { setInventory(inv => ({ ...inv, fragments: inv.fragments - 10 })); showToast("🎉 获得 1 张抽卡券！去抽卡页面使用"); } else showToast("❌ 碎片不足 10 个"); }}
+                className="w-full py-2 rounded-xl text-xs font-bold mb-2"
+                style={{ background: inventory.fragments >= 10 ? "linear-gradient(135deg, #7C3AED, #06B6D4)" : "rgba(109,58,238,0.06)", color: inventory.fragments >= 10 ? "#fff" : "#a8a6c8", cursor: inventory.fragments >= 10 ? "pointer" : "default" }}>
+                🔮 10碎片 → 1抽卡券
+              </button>
+              <button onClick={() => { window.location.href = "/gacha"; }}
+                className="w-full py-2 rounded-xl text-xs font-bold"
+                style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)", color: "#FCD34D", cursor: "pointer" }}>
+                ✨ 前往抽卡页面
+              </button>
+            </div>
+            <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #ddd6fe" }}>
               <div className="text-xs font-bold mb-2" style={{ color: "#92400e", fontFamily: "'Space Grotesk', sans-serif" }}>💡 游戏提示</div>
               <ul className="space-y-1.5 text-xs" style={{ color: "#7c7aaa" }}>
                 <li>⚡ 体力每 8 小时恢复 1 点</li>
@@ -533,10 +588,10 @@ export function Game() {
               </div>
               <div className="space-y-3">
                 {[
-                  { icon: "🐟", name: "猫粮",   desc: "带回 NFT 概率提升",     cost: 5,  action: () => {} },
-                  { icon: "🥫", name: "罐罐",   desc: "稀有 NFT 概率大幅提升", cost: 15, action: () => {} },
-                  { icon: "⚡", name: "体力恢复", desc: "立即恢复 1 点体力",    cost: 8,  action: () => buyItem("stamina", 8) },
-                  { icon: "🔮", name: "加速符", desc: "本次出猎时长减半",       cost: 10, action: () => {} },
+                  { icon: "🐟", name: "猫粮",   desc: `带回 NFT 概率提升（已有：${foodCount}）`,     cost: 5,  action: () => buyItem("food", 5, "猫粮") },
+                  { icon: "🥫", name: "罐罐",   desc: `稀有 NFT 概率大幅提升（已有：${canCount}）`, cost: 15, action: () => buyItem("can", 15, "罐罐") },
+                  { icon: "⚡", name: "体力恢复", desc: "立即恢复 1 点体力",    cost: 8,  action: () => buyItem("stamina", 8, "体力") },
+                  { icon: "🔮", name: "加速符", desc: `本次出猎时长减半（已有：${boosterCount}）`,  cost: 10, action: () => buyItem("booster", 10, "加速符") },
                 ].map(item => (
                   <div key={item.name} className="flex items-center justify-between p-3 rounded-xl"
                     style={{ background: "rgba(109,58,238,0.04)", border: "1px solid rgba(109,58,238,0.08)" }}>
@@ -559,6 +614,14 @@ export function Game() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-2xl text-sm font-bold"
+          style={{ background: "rgba(15,12,40,0.95)", color: "#e2d9f3", border: "1px solid rgba(167,139,250,0.3)", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", fontFamily: "'Space Grotesk', sans-serif" }}>
+          {toast}
+        </div>
+      )}
 
       {/* Rewards Modal */}
       <AnimatePresence>
