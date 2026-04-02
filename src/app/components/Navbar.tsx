@@ -3,7 +3,6 @@ import { Link, useNavigate, useLocation } from "react-router";
 import { Wallet, LogOut, Coins, ChevronDown, Heart, Gift, CreditCard, Image, ShieldCheck, Gamepad2, Building2 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { getReadonlyContracts } from "../../lib/contracts";
-import { PurrChainIcon } from "./PurrChainIcon";
 
 const OWNER_ADDRESS   = "0x99d23e329CBF9989581De6b6D15A7d2C3DD342df";
 const ADMIN_ADDRESSES = [
@@ -100,7 +99,7 @@ export function Navbar() {
       >
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-          <PurrChainIcon size={32} />
+          <span className="text-2xl">🐾</span>
           <span className="hidden sm:block text-lg font-black" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
             <span style={{ color: "#F97316" }}>Purr</span>
             <span style={{ color: "#92400e" }}>Chain</span>

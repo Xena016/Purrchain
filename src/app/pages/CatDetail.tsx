@@ -170,7 +170,7 @@ export function CatDetail() {
     c.donationVault.userCatDonation(walletAddress, catId)
       .then(v => setDonationTotal(parseFloat(ethers.formatEther(v as bigint)).toFixed(3)))
       .catch(() => {});
-    c.donationVault.remainingToNextStage(walletAddress, catId)
+    c.donationVault.remainingToNextMint(walletAddress, catId)
       .then(v => setRemainingToNext(parseFloat(ethers.formatEther(v as bigint)).toFixed(3)))
       .catch(() => {});
   }, [walletAddress, catId, cat]);
@@ -182,10 +182,12 @@ export function CatDetail() {
     ? appInfo : null;
   const appStatus = myApp ? Number(myApp.status) : -1;
 
-  // 是否可捐款（合约接受 Available 和 CloudAdopted 两种状态）
-  const canDonate = cat?.status === "available" || cat?.status === "cloudAdopted";
-  // 是否可申请领养（Available 或 CloudAdopted）
+  // 捐款：Available / CloudAdopted / PendingAdoption 均可（Adopted / Closed 不行）
+  const canDonate = cat?.status === "available" || cat?.status === "cloudAdopted" || cat?.status === "pendingAdoption";
+  // 申请领养：Available 或 CloudAdopted
   const canApply  = cat?.status === "available" || cat?.status === "cloudAdopted";
+  // 已关闭机构的猫，禁止所有交互
+  const isClosed  = cat?.status === "closed";
   // 是否已有我的申请在进行中
   const hasActiveApp = appStatus >= 0 && appStatus <= 3;
 
@@ -377,7 +379,7 @@ export function CatDetail() {
 
   const STATUS_COLOR: Record<CatStatus, string> = {
     available: "#16a34a", cloudAdopted: "#F97316",
-    pendingAdoption: "#a855f7", adopted: "#888888",
+    pendingAdoption: "#a855f7", adopted: "#888888", closed: "#64748b",
   };
   const statusColor = STATUS_COLOR[cat.status];
   const statusLabel = getStatusLabel(cat.status, lang);
@@ -497,6 +499,13 @@ export function CatDetail() {
                 style={{ background: "linear-gradient(135deg, #F97316, #fbbf24)", cursor: "pointer" }}>
                 {isZh ? "🔗 连接钱包以互动" : "Connect Wallet"}
               </button>
+            ) : isClosed ? (
+              <div className="p-4 rounded-2xl text-center"
+                style={{ background: "rgba(100,116,139,0.08)", border: "1px solid rgba(100,116,139,0.2)" }}>
+                <p className="text-sm font-semibold" style={{ color: "#64748b" }}>
+                  🔒 {isZh ? "该机构已关闭，猫咪档案仅供查看" : "Shelter closed — archive view only"}
+                </p>
+              </div>
             ) : (
               <div className="flex flex-col gap-3">
                 {/* 领养区 */}
@@ -703,8 +712,11 @@ export function CatDetail() {
               {!starterCatClaimed ? (
                 <div className="space-y-2 mb-4 text-left">
                   {[
-                    { icon: "🎁", zh: `${cat.name} StarterCat NFT（免费）`, en: `${cat.name} StarterCat NFT (free)` },
-                    { icon: "🖼️", zh: `Stage ${cat.stage} 成长 NFT（免费）`, en: `Stage ${cat.stage} Growth NFT (free)` },
+                    {
+                      icon: "🎲",
+                      zh: `随机获得 ${cat.name} 的一张成长阶段 NFT（免费）`,
+                      en: `Get a random Growth Stage NFT for ${cat.name} (free)`,
+                    },
                     { icon: "🎮", zh: "解锁放置类游戏", en: "Unlock idle game" },
                   ].map(item => (
                     <div key={item.zh} className="flex items-center gap-2 px-3 py-2 rounded-xl"
@@ -713,6 +725,11 @@ export function CatDetail() {
                       <span className="text-xs font-medium" style={{ color: "#78350f" }}>{isZh ? item.zh : item.en}</span>
                     </div>
                   ))}
+                  <p className="text-xs px-1" style={{ color: "#b45309" }}>
+                    {isZh
+                      ? "💡 NFT 阶段随机，取决于该猫咪当前已有的成长图片"
+                      : "💡 NFT stage is random based on available growth images"}
+                  </p>
                 </div>
               ) : isMyStarterCat ? (
                 <p className="text-sm mb-4" style={{ color: "#b45309" }}>

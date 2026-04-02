@@ -1,19 +1,9 @@
 import { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { X, Sparkles, Coins, Gift, Heart, CheckCircle, Loader2 } from "lucide-react";
+import { getReadonlyContracts } from "../../lib/contracts";
 
-interface Props {
-  onClose: () => void;
-}
-
-// Season 1 全家福的 IPFS metadata URI（与合约 deploy.js 一致）
-const SEASON1_META_URI = "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/season1_family.json";
-const IPFS_GATEWAY    = "https://ipfs.io/ipfs/";
-
-function ipfsToHttp(uri: string) {
-  if (uri.startsWith("ipfs://")) return uri.replace("ipfs://", IPFS_GATEWAY);
-  return uri;
-}
+interface Props { onClose: () => void; }
 
 export function NFTWelcomeModal({ onClose }: Props) {
   const {
@@ -24,59 +14,58 @@ export function NFTWelcomeModal({ onClose }: Props) {
   } = useApp();
 
   const [localError, setLocalError] = useState<string | null>(null);
-  const [claiming,   setClaiming]   = useState(false);
-  const [done,       setDone]       = useState(false);
-  const [nftImage,   setNftImage]   = useState<string | null>(null);
-  const [imgLoading, setImgLoading] = useState(true);
+  const [claiming, setClaiming]     = useState(false);
+  const [done, setDone]             = useState(false);
+  const [portraitImg, setPortraitImg] = useState<string | null>(null);
 
-  // 加载全家福 NFT 真实图片
+  // 从链上读取当季全家福图片
   useEffect(() => {
-    let cancelled = false;
-    setImgLoading(true);
-    (async () => {
+    const fetchImg = async () => {
       try {
-        const httpUri = ipfsToHttp(SEASON1_META_URI);
-        const res  = await fetch(httpUri, { signal: AbortSignal.timeout(8000) });
+        const c = getReadonlyContracts();
+        const season = await c.catNFT.currentSeason() as bigint;
+        const uri    = await c.catNFT.seasonURIs(Number(season)) as string;
+        if (!uri) return;
+        const httpUri = uri.startsWith("ipfs://")
+          ? uri.replace("ipfs://", "https://ipfs.io/ipfs/") : uri;
+        const res  = await fetch(httpUri, { signal: AbortSignal.timeout(6000) });
         const json = await res.json() as { image?: string };
-        if (!cancelled && json.image) {
-          setNftImage(ipfsToHttp(json.image));
+        if (json.image) {
+          setPortraitImg(
+            json.image.startsWith("ipfs://")
+              ? json.image.replace("ipfs://", "https://ipfs.io/ipfs/")
+              : json.image
+          );
         }
-      } catch { /* 网络失败时 fallback 到 emoji */ }
-      finally  { if (!cancelled) setImgLoading(false); }
-    })();
-    return () => { cancelled = true; };
+      } catch { /* 使用默认猫咪 emoji */ }
+    };
+    fetchImg();
   }, []);
 
   const alreadyDone = nftClaimed && welcomeClaimed;
 
   const handleClaim = async () => {
     if (!isConnected) { await connectWallet(); return; }
-    setClaiming(true);
-    setLocalError(null);
-    clearError();
+    setClaiming(true); setLocalError(null); clearError();
     try {
       if (!nftClaimed) {
         await claimFamilyPortrait();
         await new Promise(r => setTimeout(r, 500));
       }
-      if (!welcomeClaimed) {
-        await claimWelcomeTokens();
-      }
+      if (!welcomeClaimed) await claimWelcomeTokens();
       setDone(true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";
       if (!msg.includes("user rejected")) setLocalError(msg.slice(0, 100));
-    } finally {
-      setClaiming(false);
-    }
+    } finally { setClaiming(false); }
   };
 
-  const showError   = localError || error;
+  const showError    = localError || error;
   const isProcessing = claiming || isLoading;
 
   const btnText = () => {
-    if (isProcessing)                  return "处理中…";
-    if (!isConnected)                  return "🔗 连接钱包并领取";
+    if (isProcessing) return "处理中…";
+    if (!isConnected) return "🔗 连接钱包并领取";
     if (nftClaimed && !welcomeClaimed) return "🪙 领取 20 PURR";
     return "🎁 免费领取 NFT + 20 PURR";
   };
@@ -86,12 +75,8 @@ export function NFTWelcomeModal({ onClose }: Props) {
       style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)" }}>
       <div className="relative w-full max-w-lg rounded-3xl overflow-hidden"
         style={{ background: "linear-gradient(145deg, #12102b, #1a1535)", border: "1px solid rgba(126,200,227,0.2)" }}>
-
-        {/* 光晕 */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-32 blur-3xl opacity-30 pointer-events-none"
           style={{ background: "radial-gradient(circle, #f7a541, transparent)" }} />
-
-        {/* 关闭 */}
         <button onClick={onClose}
           className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center z-10"
           style={{ background: "rgba(109,58,238,0.08)", color: "#888", cursor: "pointer" }}>
@@ -101,37 +86,19 @@ export function NFTWelcomeModal({ onClose }: Props) {
         <div className="p-8 flex flex-col items-center gap-5 relative">
           {/* NFT 卡片 — 显示真实图片 */}
           <div className="relative">
-            <div className="w-48 h-48 rounded-2xl flex flex-col items-center justify-center overflow-hidden"
+            <div className="w-48 h-48 rounded-2xl overflow-hidden flex items-center justify-center"
               style={{
-                background: "linear-gradient(135deg, #1a1040, #2d1060)",
+                background: portraitImg ? "transparent" : "linear-gradient(135deg, #1a1040, #2d1060)",
                 border: "2px solid rgba(247,165,65,0.4)",
                 boxShadow: "0 0 40px rgba(247,165,65,0.15)",
               }}>
-              {imgLoading ? (
-                <Loader2 size={32} className="animate-spin" style={{ color: "#f7a541" }} />
-              ) : nftImage ? (
-                <img
-                  src={nftImage}
-                  alt="Season 1 全家福 NFT"
-                  className="w-full h-full object-cover"
-                  onError={() => setNftImage(null)}
-                />
+              {portraitImg ? (
+                <img src={portraitImg} alt="全家福 NFT" className="w-full h-full object-cover" />
               ) : (
-                /* fallback */
-                <div className="flex flex-col items-center gap-2">
-                  <div className="text-6xl" style={{ filter: "drop-shadow(0 0 20px rgba(247,165,65,0.6))" }}>🐱</div>
+                <div className="flex flex-col items-center">
+                  <div className="text-6xl mb-2" style={{ filter: "drop-shadow(0 0 20px rgba(247,165,65,0.6))" }}>🐱</div>
                   <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(247,165,65,0.2)", color: "#f7a541" }}>Season 1</span>
-                  <span className="text-sm font-bold" style={{ color: "#e2d9f3" }}>猫咪全家福</span>
-                </div>
-              )}
-              {/* NFT 标签 overlay */}
-              {nftImage && !imgLoading && (
-                <div className="absolute bottom-0 left-0 right-0 px-3 py-2"
-                  style={{ background: "linear-gradient(to top, rgba(18,16,43,0.9), transparent)" }}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold" style={{ color: "#e2d9f3" }}>猫咪全家福</span>
-                    <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "rgba(247,165,65,0.25)", color: "#f7a541" }}>Season 1</span>
-                  </div>
+                  <span className="text-sm mt-1 font-bold" style={{ color: "#e2d9f3" }}>猫咪全家福</span>
                 </div>
               )}
             </div>
@@ -139,7 +106,6 @@ export function NFTWelcomeModal({ onClose }: Props) {
             <Sparkles size={14} color="#7ec8e3" className="absolute -bottom-2 -left-2 animate-spin" style={{ animationDuration: "4s" }} />
           </div>
 
-          {/* 成功态 */}
           {(done || alreadyDone) ? (
             <div className="flex flex-col items-center gap-4 text-center w-full">
               <div className="text-5xl animate-bounce">🎊</div>
@@ -150,8 +116,7 @@ export function NFTWelcomeModal({ onClose }: Props) {
                 已拥有 <span style={{ color: "#f7a541" }}>Season 1 全家福 NFT</span> 与{" "}
                 <span style={{ color: "#4ecdc4" }}>20 $PURR</span>，快去浏览猫咪档案吧 🐱
               </p>
-              <button onClick={onClose}
-                className="w-full py-3 rounded-xl font-bold"
+              <button onClick={onClose} className="w-full py-3 rounded-xl font-bold"
                 style={{ background: "linear-gradient(135deg, #7ec8e3, #a855f7)", color: "#1e1b4b", cursor: "pointer" }}>
                 开始探索猫咪档案 →
               </button>
@@ -162,7 +127,7 @@ export function NFTWelcomeModal({ onClose }: Props) {
                 <h2 className="text-xl font-black mb-1" style={{ color: "#f7a541" }}>🎉 欢迎加入 PurrChain！</h2>
                 {nftClaimed && !welcomeClaimed ? (
                   <p className="text-sm" style={{ color: "#a09cc0" }}>
-                    检测到您已持有全家福 NFT，还差最后一步——领取您的{" "}
+                    检测到您已持有全家福 NFT，还差最后一步——领取{" "}
                     <span style={{ color: "#4ecdc4" }}>20 $PURR</span> 新手代币！
                   </p>
                 ) : (
@@ -173,7 +138,6 @@ export function NFTWelcomeModal({ onClose }: Props) {
                 )}
               </div>
 
-              {/* 步骤 */}
               <div className="w-full space-y-2">
                 {[
                   { icon: <Gift size={15} />, color: "#f7a541", done: nftClaimed, zh: "领取 Season 1 全家福 NFT" },
@@ -185,9 +149,7 @@ export function NFTWelcomeModal({ onClose }: Props) {
                       style={{ background: `${item.color}20`, color: item.color }}>
                       {item.done ? <CheckCircle size={15} /> : item.icon}
                     </div>
-                    <span className="text-sm flex-1" style={{ color: item.done ? item.color : "#a09cc0" }}>
-                      {item.zh}
-                    </span>
+                    <span className="text-sm flex-1" style={{ color: item.done ? item.color : "#a09cc0" }}>{item.zh}</span>
                     {item.done && <span className="text-xs font-semibold" style={{ color: item.color }}>✓ 已完成</span>}
                   </div>
                 ))}
@@ -201,9 +163,7 @@ export function NFTWelcomeModal({ onClose }: Props) {
 
               {showError && <p className="text-xs text-center" style={{ color: "#ff6b6b" }}>⚠️ {showError}</p>}
 
-              <button
-                onClick={handleClaim}
-                disabled={isProcessing}
+              <button onClick={handleClaim} disabled={isProcessing}
                 className="w-full py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-opacity hover:opacity-90 disabled:opacity-60"
                 style={{ background: "linear-gradient(135deg, #f7a541, #ff6b6b)", color: "#1e1b4b", cursor: "pointer" }}>
                 {isProcessing && <Loader2 size={16} className="animate-spin" />}
@@ -216,3 +176,4 @@ export function NFTWelcomeModal({ onClose }: Props) {
     </div>
   );
 }
+

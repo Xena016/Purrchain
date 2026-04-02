@@ -21,13 +21,11 @@ const PRESET_STAGE_URIS = [
     label: "成年猫 Stage 3",
     uri: "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/cat_stage3.json",
   },
-  {
-    label: "Genesis Stage 4",
-    uri: "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/genesis.json",
-  },
 ];
 
-const STAGE_LABELS = ["Stage 1 幼猫", "Stage 2 少年猫", "Stage 3 成年猫", "Stage 4 Genesis"];
+const GENESIS_PRESET_URI = "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/genesis.json";
+
+const STAGE_LABELS = ["Stage 1 幼猫", "Stage 2 少年猫", "Stage 3 成年猫"];
 
 interface CatRecord {
   id: number;
@@ -69,7 +67,6 @@ export function ShelterManage() {
   const [myCats,        setMyCats]        = useState<CatRecord[]>([]);
   const [loadingCats,   setLoadingCats]   = useState(false);
   const [showForm,      setShowForm]      = useState(false);
-  const [editingCat,    setEditingCat]    = useState<CatRecord | null>(null);
 
   // 领养申请管理
   const [adoptionApps,   setAdoptionApps]   = useState<AdoptionApp[]>([]);
@@ -78,7 +75,7 @@ export function ShelterManage() {
   const [appActionLoading, setAppActionLoading] = useState<number | null>(null);
   const [appActionResult,  setAppActionResult]  = useState<string | null>(null);
 
-  // 表单状态
+  // 新建猫咪表单（3个URI，不含genesis）
   const [form, setForm] = useState({
     name: "", age: "1", gender: "female", description: "",
     uri0: "", uri1: "", uri2: "",
@@ -86,6 +83,13 @@ export function ShelterManage() {
   const [txLoading, setTxLoading] = useState(false);
   const [txSuccess, setTxSuccess] = useState<string | null>(null);
   const [txError,   setTxError]   = useState<string | null>(null);
+
+  // 编辑已有猫咪（状态 + stage4 URI）
+  const [editCatId,     setEditCatId]     = useState<number | null>(null);
+  const [editStatus,    setEditStatus]    = useState<number>(0);
+  const [editGenesis,   setEditGenesis]   = useState("");
+  const [editLoading,   setEditLoading]   = useState(false);
+  const [editResult,    setEditResult]    = useState<string | null>(null);
 
   // 检查机构状态
   useEffect(() => {
@@ -237,6 +241,7 @@ export function ShelterManage() {
     setTxLoading(true); setTxError(null); setTxSuccess(null);
     try {
       const c = getContracts(signer);
+      // 新合约只接收 3 个 URI（stage0/1/2），genesis 由单独入口设置
       const stageURIs: [string, string, string] = [
         form.uri0.trim(), form.uri1.trim(), form.uri2.trim(),
       ];
@@ -249,7 +254,7 @@ export function ShelterManage() {
       );
       await (tx as ethers.ContractTransactionResponse).wait();
       setTxSuccess(isZh ? `✅ 猫咪「${form.name}」已成功登记上链！` : `✅ Cat "${form.name}" registered on-chain!`);
-      setForm({ name:"", age:"1", gender:"female", description:"", uri0:"", uri1:"", uri2:"" });
+      setForm({ name: "", age: "1", gender: "female", description: "", uri0: "", uri1: "", uri2: "" });
       // 刷新列表
       const c2 = getReadonlyContracts();
       const total = Number(await c2.catRegistry.catCount());
@@ -272,6 +277,47 @@ export function ShelterManage() {
         else setTxError(msg.slice(0, 100));
       }
     } finally { setTxLoading(false); }
+  };
+
+  // 编辑猫咪：更新状态 or 设置 genesis URI
+  const handleEditCat = async () => {
+    if (!signer || editCatId === null) return;
+    setEditLoading(true); setEditResult(null);
+    try {
+      const contract = new ethers.Contract(
+        ADDRESSES.catRegistry,
+        [
+          "function updateCatStatus(uint256 _catId, uint8 _status) external",
+          "function updateCatStageURI(uint256 _catId, uint8 _stage, string calldata _uri) external",
+        ],
+        signer
+      );
+      // 更新状态（只允许 Available=0/CloudAdopted=1，机构不能手动设 Adopted/Closed）
+      const cat = myCats.find(c => c.id === editCatId);
+      if (cat && editStatus !== cat.status) {
+        const tx = await contract.updateCatStatus(editCatId, editStatus);
+        await tx.wait();
+      }
+      // 如果填了 genesis URI，设置 stage3
+      if (editGenesis.trim()) {
+        const tx = await contract.updateCatStageURI(editCatId, 3, editGenesis.trim());
+        await tx.wait();
+      }
+      setEditResult(isZh ? "✅ 更新成功" : "✅ Updated");
+      // 刷新
+      const c2 = getReadonlyContracts();
+      const updatedCat = await c2.catRegistry.getCat(editCatId) as {
+        name: string; age: bigint; gender: string; description: string;
+        stageURIs: string[]; shelter: string; status: number;
+      };
+      setMyCats(prev => prev.map(c => c.id === editCatId ? {
+        ...c, status: Number(updatedCat.status), stageURIs: Array.from(updatedCat.stageURIs)
+      } : c));
+      setEditGenesis("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setEditResult(isZh ? `❌ 失败：${msg.slice(0, 80)}` : `❌ Failed: ${msg.slice(0, 80)}`);
+    } finally { setEditLoading(false); }
   };
 
   const UriField = ({ idx, value, onChange }: { idx: number; value: string; onChange: (v: string) => void }) => (
@@ -525,34 +571,107 @@ export function ShelterManage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {myCats.map(cat => {
               const st = STATUS_LABEL[cat.status] ?? STATUS_LABEL[0];
+              const isEditing = editCatId === cat.id;
+              const hasGenesis = cat.stageURIs[3] && cat.stageURIs[3].length > 0;
               return (
-                <div key={cat.id} className="p-5 rounded-2xl flex items-start gap-4"
+                <div key={cat.id} className="rounded-2xl overflow-hidden"
                   style={{ background: "#fff9f5", border: "1px solid rgba(249,115,22,0.1)" }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl"
-                    style={{ background: "rgba(249,115,22,0.1)" }}>
-                    <Cat size={20} style={{ color: "#F97316" }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-bold" style={{ color: "#92400e" }}>{cat.name}</span>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                        style={{ background: `${st.color}18`, color: st.color, border: `1px solid ${st.color}30` }}>
-                        {isZh ? st.zh : st.en}
-                      </span>
+                  <div className="p-4 flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl"
+                      style={{ background: "rgba(249,115,22,0.1)" }}>
+                      <Cat size={20} style={{ color: "#F97316" }} />
                     </div>
-                    <p className="text-xs mb-1" style={{ color: "#b45309" }}>
-                      {cat.gender === "female" ? "♀" : "♂"} · {cat.age}{isZh ? "岁" : "yr"}
-                    </p>
-                    <p className="text-xs truncate" style={{ color: "#78350f" }}>{cat.description}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs font-mono" style={{ color: "#d97706" }}>Cat #{cat.id}</span>
-                      <a href={`https://testnet.snowtrace.io/address/${ADDRESSES.catRegistry}`}
-                        target="_blank" rel="noreferrer"
-                        className="flex items-center gap-1 text-xs" style={{ color: "#F97316" }}>
-                        <ExternalLink size={10} />Snowtrace
-                      </a>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-bold" style={{ color: "#92400e" }}>{cat.name}</span>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                          style={{ background: `${st.color}18`, color: st.color, border: `1px solid ${st.color}30` }}>
+                          {isZh ? st.zh : st.en}
+                        </span>
+                        {hasGenesis && (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                            style={{ background: "rgba(168,85,247,0.12)", color: "#a855f7", border: "1px solid rgba(168,85,247,0.3)" }}>
+                            ✨ Genesis
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs mb-1" style={{ color: "#b45309" }}>
+                        {cat.gender === "female" ? "♀" : "♂"} · {cat.age}{isZh ? "岁" : "yr"}
+                      </p>
+                      <p className="text-xs truncate" style={{ color: "#78350f" }}>{cat.description}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-xs font-mono" style={{ color: "#d97706" }}>Cat #{cat.id}</span>
+                        <a href={`https://testnet.snowtrace.io/address/${ADDRESSES.catRegistry}`}
+                          target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1 text-xs" style={{ color: "#F97316" }}>
+                          <ExternalLink size={10} />Snowtrace
+                        </a>
+                      </div>
                     </div>
+                    <button
+                      onClick={() => {
+                        if (isEditing) { setEditCatId(null); setEditResult(null); }
+                        else { setEditCatId(cat.id); setEditStatus(cat.status); setEditGenesis(""); setEditResult(null); }
+                      }}
+                      className="flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold"
+                      style={{ background: isEditing ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.2)", color: "#c2410c", cursor: "pointer" }}>
+                      {isEditing ? (isZh ? "收起" : "Close") : (isZh ? "编辑" : "Edit")}
+                    </button>
                   </div>
+
+                  {/* 编辑面板 */}
+                  {isEditing && (
+                    <div className="px-4 pb-4 border-t" style={{ borderColor: "rgba(249,115,22,0.1)" }}>
+                      <p className="text-xs font-semibold mt-3 mb-2" style={{ color: "#F97316" }}>
+                        {isZh ? "更新猫咪状态" : "Update Status"}
+                      </p>
+                      <div className="flex gap-2 flex-wrap mb-3">
+                        {([
+                          { val: 0, zh: "待领养", en: "Available" },
+                          { val: 1, zh: "云领养中", en: "Cloud Adopted" },
+                        ] as const).map(opt => (
+                          <button key={opt.val} onClick={() => setEditStatus(opt.val)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+                            style={{
+                              background: editStatus === opt.val ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.05)",
+                              border: editStatus === opt.val ? "1px solid rgba(249,115,22,0.4)" : "1px solid rgba(249,115,22,0.12)",
+                              color: editStatus === opt.val ? "#F97316" : "#b45309", cursor: "pointer",
+                            }}>
+                            {isZh ? opt.zh : opt.en}
+                          </button>
+                        ))}
+                      </div>
+
+                      <p className="text-xs font-semibold mb-1.5" style={{ color: "#a855f7" }}>
+                        ✨ {isZh ? "设置 Genesis NFT 图片（Stage 4）" : "Set Genesis NFT Image (Stage 4)"}
+                      </p>
+                      <div className="flex gap-1.5 mb-1.5">
+                        <button onClick={() => setEditGenesis(GENESIS_PRESET_URI)}
+                          className="px-2 py-1 rounded-lg text-xs"
+                          style={{ background: "rgba(168,85,247,0.1)", color: "#a855f7", border: "1px solid rgba(168,85,247,0.2)", cursor: "pointer" }}>
+                          {isZh ? "使用默认图片" : "Use default"}
+                        </button>
+                        {editGenesis && <button onClick={() => setEditGenesis("")}
+                          className="px-2 py-1 rounded-lg text-xs"
+                          style={{ background: "rgba(220,38,38,0.07)", color: "#dc2626", border: "1px solid rgba(220,38,38,0.15)", cursor: "pointer" }}>
+                          {isZh ? "清空" : "Clear"}
+                        </button>}
+                      </div>
+                      <input value={editGenesis} onChange={e => setEditGenesis(e.target.value)}
+                        placeholder={hasGenesis ? cat.stageURIs[3] : "ipfs://..."}
+                        className="w-full px-3 py-2 rounded-xl outline-none text-xs font-mono mb-3"
+                        style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.18)", color: "#92400e" }} />
+
+                      {editResult && <p className="text-xs mb-2 font-semibold"
+                        style={{ color: editResult.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{editResult}</p>}
+                      <button onClick={handleEditCat} disabled={editLoading}
+                        className="w-full py-2.5 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2"
+                        style={{ background: "linear-gradient(135deg,#F97316,#ea580c)", cursor: "pointer", opacity: editLoading ? 0.7 : 1 }}>
+                        {editLoading && <Loader2 size={13} className="animate-spin" />}
+                        {isZh ? "保存更新" : "Save Changes"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -642,7 +761,6 @@ export function ShelterManage() {
                 <UriField idx={0} value={form.uri0} onChange={v => setForm(p => ({ ...p, uri0: v }))} />
                 <UriField idx={1} value={form.uri1} onChange={v => setForm(p => ({ ...p, uri1: v }))} />
                 <UriField idx={2} value={form.uri2} onChange={v => setForm(p => ({ ...p, uri2: v }))} />
-                <UriField idx={3} value={form.uri3} onChange={v => setForm(p => ({ ...p, uri3: v }))} />
               </div>
 
               {txError   && <div className="flex items-center gap-2 mb-3 text-xs text-red-500"><AlertCircle size={13} />{txError}</div>}
@@ -658,115 +776,6 @@ export function ShelterManage() {
           </div>
         )}
       </AnimatePresence>
-    </div>
-  );
-}
-
-// ── 猫咪编辑模态框组件 ─────────────────────────────────────────
-export function EditCatModal({ cat, onClose, onSave, signer, isZh }: {
-  cat: { id: number; name: string; description: string; stageURIs: string[]; status: number };
-  onClose: () => void;
-  onSave: () => void;
-  signer: import("ethers").Signer | null;
-  isZh: boolean;
-}) {
-  // getContracts imported at top of file
-  const [loading, setLoading] = useState(false);
-  const [result,  setResult]  = useState<string | null>(null);
-
-  // Stage URI 更新
-  const [stageURI, setStageURI] = useState(["", "", "", ""]);
-  const [selectedStage, setSelectedStage] = useState(3); // 默认 stage4 genesis
-
-  const handleUpdateURI = async () => {
-    if (!signer) return;
-    setLoading(true); setResult(null);
-    try {
-      const { ethers } = await import("ethers");
-      const { ADDRESSES } = await import("../../lib/contracts");
-      const c = new ethers.Contract(ADDRESSES.catRegistry, [
-        "function updateCatStageURI(uint256 _catId, uint8 _stage, string calldata _uri) external"
-      ], signer);
-      const tx = await c.updateCatStageURI(cat.id, selectedStage, stageURI[selectedStage]);
-      await (tx as { wait: () => Promise<unknown> }).wait();
-      setResult(isZh ? `✅ Stage ${selectedStage + 1} URI 已更新` : `✅ Stage ${selectedStage + 1} URI updated`);
-      onSave();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "";
-      if (!msg.includes("user rejected")) setResult(`❌ ${msg.slice(0, 80)}`);
-    } finally { setLoading(false); }
-  };
-
-  const STAGE_LABELS_EDIT = ["Stage 1 幼猫", "Stage 2 少年猫", "Stage 3 成年猫", "Stage 4 Genesis"];
-  const PRESET_URIS = [
-    "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/cat_stage1.json",
-    "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/cat_stage2_junior.json",
-    "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/cat_stage3.json",
-    "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/genesis.json",
-  ];
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}>
-      <div className="w-full max-w-md rounded-3xl p-6 relative"
-        style={{ background: "#fffbf5", border: "1px solid rgba(249,115,22,0.2)", boxShadow: "0 20px 60px rgba(249,115,22,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="font-black text-lg" style={{ color: "#92400e" }}>
-            {isZh ? `编辑 · ${cat.name}` : `Edit · ${cat.name}`}
-          </h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg" style={{ background: "rgba(249,115,22,0.08)", color: "#b45309", cursor: "pointer" }}>✕</button>
-        </div>
-
-        {/* Stage URI 更新 */}
-        <div className="mb-4">
-          <p className="text-sm font-bold mb-3" style={{ color: "#92400e" }}>
-            {isZh ? "更新阶段图片 URI" : "Update Stage URI"}
-          </p>
-          <div className="flex gap-2 flex-wrap mb-3">
-            {STAGE_LABELS_EDIT.map((label, i) => (
-              <button key={i} onClick={() => setSelectedStage(i)}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold"
-                style={{
-                  background: selectedStage === i ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.05)",
-                  border: selectedStage === i ? "1px solid rgba(249,115,22,0.4)" : "1px solid rgba(249,115,22,0.12)",
-                  color: selectedStage === i ? "#F97316" : "#b45309",
-                  cursor: "pointer",
-                }}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* 当前 URI 显示 */}
-          {cat.stageURIs[selectedStage] && (
-            <div className="mb-2 px-3 py-2 rounded-xl text-xs font-mono break-all" style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.1)", color: "#b45309" }}>
-              {isZh ? "当前：" : "Current: "}{cat.stageURIs[selectedStage] || (isZh ? "（未设置）" : "(not set)")}
-            </div>
-          )}
-
-          <div className="flex gap-1.5 mb-2">
-            <button onClick={() => { const u = [...stageURI]; u[selectedStage] = PRESET_URIS[selectedStage]; setStageURI(u); }}
-              className="px-2 py-1 rounded-lg text-xs"
-              style={{ background: "rgba(249,115,22,0.1)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.2)", cursor: "pointer" }}>
-              {isZh ? "使用默认图片" : "Use default"}
-            </button>
-          </div>
-          <textarea
-            value={stageURI[selectedStage]}
-            onChange={e => { const u = [...stageURI]; u[selectedStage] = e.target.value; setStageURI(u); }}
-            placeholder="ipfs://..."
-            rows={2}
-            className="w-full px-3 py-2 rounded-xl outline-none text-xs font-mono mb-3 resize-none"
-            style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)", color: "#92400e" }}
-          />
-          {result && <p className="text-xs mb-3 font-semibold" style={{ color: result.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{result}</p>}
-          <button onClick={handleUpdateURI} disabled={loading || !stageURI[selectedStage].trim()}
-            className="w-full py-2.5 rounded-xl text-sm font-bold text-white"
-            style={{ background: (!stageURI[selectedStage].trim()) ? "rgba(249,115,22,0.3)" : "linear-gradient(135deg, #F97316, #ea580c)", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
-            {loading ? (isZh ? "更新中..." : "Updating...") : (isZh ? `更新 Stage ${selectedStage + 1} URI` : `Update Stage ${selectedStage + 1} URI`)}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

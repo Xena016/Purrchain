@@ -5,8 +5,7 @@ import { getReadonlyContracts, getContracts, ADDRESSES } from "../../lib/contrac
 import { ethers } from "ethers";
 import {
   ShieldCheck, Clock, CheckCircle, XCircle, RefreshCw,
-  ExternalLink, ArrowLeft, Search, Coins, Send, Plus, Trash2,
-  ThumbsUp, ThumbsDown, Lock, Users
+  ExternalLink, ArrowLeft, Home, Search, Coins, Send, Plus, Trash2
 } from "lucide-react";
 import { Navbar } from "../components/Navbar";
 
@@ -22,22 +21,15 @@ function isAdminWallet(addr: string | null) {
   return low === OWNER_ADDRESS.toLowerCase() || ADMIN_ADDRESSES.some(a => a.toLowerCase() === low);
 }
 
-interface ShelterInfo {
-  address: string; name: string; location: string; wallet: string; status: number;
-  // 投票信息
-  approveCount: number; rejectCount: number; majority: number;
-  myVote: number; // -1=reject 0=未投 1=approve
-  // 关闭投票
-  closeCount: number; closeMajority: number;
-}
-interface ShareRow { addr: string; share: string; }
+interface ShelterInfo { address: string; name: string; location: string; wallet: string; status: number; }
+interface ShareRow    { addr: string; share: string; }
 
 export function AdminPage() {
   const { walletAddress, isConnected, connectWallet, signer, lang } = useApp();
-  const navigate  = useNavigate();
-  const isZh      = lang === "zh";
-  const isOwner   = walletAddress?.toLowerCase() === OWNER_ADDRESS.toLowerCase();
-  const isAdmin   = isAdminWallet(walletAddress);
+  const navigate = useNavigate();
+  const isZh    = lang === "zh";
+  const isOwner = walletAddress?.toLowerCase() === OWNER_ADDRESS.toLowerCase();
+  const isAdmin = isAdminWallet(walletAddress);
 
   const [shelters,      setShelters]      = useState<ShelterInfo[]>([]);
   const [loading,       setLoading]       = useState(false);
@@ -57,75 +49,46 @@ export function AdminPage() {
   const [distributeResult,  setDistributeResult]  = useState<string | null>(null);
   const [sharesResult,      setSharesResult]      = useState<string | null>(null);
 
-  // ── 读取机构列表（含投票信息）────────────────────────────
   const loadShelters = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const provider = new ethers.JsonRpcProvider("https://api.avax-test.network/ext/bc/C/rpc");
-      const c        = getReadonlyContracts();
-      const latest   = await provider.getBlockNumber();
+      const c = getReadonlyContracts();
+      const latest = await provider.getBlockNumber();
+      // 合约今天部署，从当前区块往前 100000 块（约 2 天）开始扫，避免从区块 0 扫全链
       const SCAN_WINDOW = 100000;
-      const fromBlock   = Math.max(0, latest - SCAN_WINDOW);
-
+      const fromBlock = Math.max(0, latest - SCAN_WINDOW);
       const events: ethers.Log[] = [];
       for (let from = fromBlock; from <= latest; from += 2000) {
         const chunk = await provider.getLogs({
           address: ADDRESSES.catRegistry,
-          topics:  ["0xd77472e230176dcc3b63ebe73b71039773ff62dfb43d8e850824df0ddb2ae797"],
+          // ShelterRegistered(address indexed shelter, string name, string location)
+          topics: ["0xd77472e230176dcc3b63ebe73b71039773ff62dfb43d8e850824df0ddb2ae797"],
           fromBlock: from, toBlock: Math.min(from + 1999, latest),
         });
         events.push(...chunk);
       }
-
       const iface = new ethers.Interface([
         "event ShelterRegistered(address indexed shelter, string name, string location)",
       ]);
-
       const shelterList: ShelterInfo[] = await Promise.all(
         events.map(async (event) => {
           const addr = "0x" + event.topics[1].slice(26);
           let name = "", location = "";
-          try {
-            const p = iface.parseLog({ topics: [...event.topics], data: event.data });
-            name = p?.args[1] ?? ""; location = p?.args[2] ?? "";
-          } catch {}
-
-          let status = 0, approveCount = 0, rejectCount = 0, majority = 1;
-          let myVote = 0, closeCount = 0, closeMajority = 1;
+          try { const p = iface.parseLog({ topics: [...event.topics], data: event.data }); name = p?.args[1] ?? ""; location = p?.args[2] ?? ""; } catch {}
           try {
             const info = await c.catRegistry.shelters(addr) as { name: string; location: string; wallet: string; status: number };
-            name     = info.name || name;
-            location = info.location || location;
-            status   = Number(info.status);
-
-            // 读取投票情况
-            const votes = await c.catRegistry.getApproveVotes(addr) as { approveCount: number; rejectCount: number; majority: bigint };
-            approveCount = Number(votes.approveCount);
-            rejectCount  = Number(votes.rejectCount);
-            majority     = Number(votes.majority);
-
-            if (walletAddress) {
-              const mv = await c.catRegistry.getMyApproveVote(addr, walletAddress) as number;
-              myVote = Number(mv);
-            }
-
-            if (status === 1) {
-              const cv = await c.catRegistry.getCloseVotes(addr) as { closeCount: bigint; majority: bigint };
-              closeCount    = Number(cv.closeCount);
-              closeMajority = Number(cv.majority);
-            }
-          } catch {}
-
-          return { address: addr, name, location, wallet: addr, status, approveCount, rejectCount, majority, myVote, closeCount, closeMajority };
+            return { address: addr, name: info.name || name, location: info.location || location, wallet: info.wallet || addr, status: Number(info.status) };
+          } catch { return { address: addr, name, location, wallet: addr, status: 0 }; }
         })
       );
-
       setShelters(shelterList);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(isZh ? `读取链上数据失败：${msg.slice(0, 80)}` : `Failed to load: ${msg.slice(0, 80)}`);
-    } finally { setLoading(false); }
-  }, [isZh, walletAddress]);
+      setError(isZh ? `读取链上数据失败：${msg.slice(0, 80)}` : `Failed to load chain data: ${msg.slice(0, 80)}`);
+    }
+    finally { setLoading(false); }
+  }, [isZh]);
 
   const loadVaultBalance = useCallback(async () => {
     try {
@@ -137,10 +100,10 @@ export function AdminPage() {
 
   useEffect(() => { loadShelters(); loadVaultBalance(); }, [loadShelters, loadVaultBalance]);
 
-  // ── 投票审批（替换旧的 approveShelter）────────────────────
-  const voteApprove = async (addr: string, approve: boolean) => {
+  // 投票审批机构（approve=true赞成，false反对）
+  const voteShelter = async (addr: string, approve: boolean) => {
     if (!signer) { setError(isZh ? "请先连接钱包" : "Connect wallet first"); return; }
-    setActionLoading(addr + (approve ? "_approve" : "_reject")); setError(null); setSuccess(null);
+    setActionLoading(addr + (approve ? "_yes" : "_no")); setError(null); setSuccess(null);
     try {
       const tx = await new ethers.Contract(
         ADDRESSES.catRegistry,
@@ -148,20 +111,18 @@ export function AdminPage() {
         signer
       ).voteApprove(addr, approve);
       await tx.wait();
-      setSuccess(
-        approve
-          ? (isZh ? `已投票赞成 ${addr.slice(0,8)}...` : `Voted to approve ${addr.slice(0,8)}...`)
-          : (isZh ? `已投票反对 ${addr.slice(0,8)}...` : `Voted to reject ${addr.slice(0,8)}...`)
-      );
+      setSuccess(isZh
+        ? `已投票${approve ? "赞成" : "反对"} ${addr.slice(0,8)}...，等待多数通过`
+        : `Voted ${approve ? "approve" : "reject"} for ${addr.slice(0,8)}...`);
       await loadShelters();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
-      if (!msg.includes("user rejected")) setError(isZh ? `投票失败：${msg.slice(0, 80)}` : `Failed: ${msg.slice(0, 80)}`);
+      if (!msg.includes("user rejected")) setError(isZh ? `投票失败：${msg.slice(0,80)}` : `Failed: ${msg.slice(0,80)}`);
     } finally { setActionLoading(null); }
   };
 
-  // ── 投票关闭机构 ──────────────────────────────────────────
-  const voteClose = async (addr: string) => {
+  // 投票关闭机构
+  const voteCloseShelter = async (addr: string) => {
     if (!signer) { setError(isZh ? "请先连接钱包" : "Connect wallet first"); return; }
     setActionLoading(addr + "_close"); setError(null); setSuccess(null);
     try {
@@ -171,11 +132,11 @@ export function AdminPage() {
         signer
       ).voteClose(addr);
       await tx.wait();
-      setSuccess(isZh ? `已投票关闭 ${addr.slice(0,8)}...` : `Voted to close ${addr.slice(0,8)}...`);
+      setSuccess(isZh ? `已投票关闭 ${addr.slice(0,8)}...，等待多数通过` : `Voted to close ${addr.slice(0,8)}...`);
       await loadShelters();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
-      if (!msg.includes("user rejected")) setError(isZh ? `投票失败：${msg.slice(0, 80)}` : `Failed: ${msg.slice(0, 80)}`);
+      if (!msg.includes("user rejected")) setError(isZh ? `投票失败：${msg.slice(0,80)}` : `Failed: ${msg.slice(0,80)}`);
     } finally { setActionLoading(null); }
   };
 
@@ -188,14 +149,14 @@ export function AdminPage() {
       const tx = await new ethers.Contract(ADDRESSES.adoptionVault, ["function confirmVisit(uint256,bool) external"], signer).confirmVisit(cid, passed);
       await tx.wait();
       setVisitResult(passed
-        ? (isZh ? `✅ 回访通过！猫咪 #${cid} 已领养，保证金已退还，Genesis NFT 已 mint` : `✅ Passed! Cat #${cid} adopted.`)
+        ? (isZh ? `✅ 回访通过！猫咪 #${cid} 已领养，保证金已退还，Genesis NFT 已 mint` : `✅ Passed! Cat #${cid} adopted, deposit returned, Genesis NFT minted`)
         : (isZh ? `❌ 回访未通过，保证金已转给机构` : `❌ Failed, deposit sent to shelter`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
       if (!msg.includes("user rejected")) {
-        if      (msg.includes("not in deposit paid")) setVisitError(isZh ? "该猫咪尚未缴纳保证金" : "Deposit not paid");
-        else if (msg.includes("lock period"))         setVisitError(isZh ? "锁定期未满一年" : "Lock period not elapsed");
-        else                                           setVisitError(msg.slice(0, 100));
+        if (msg.includes("not in deposit paid")) setVisitError(isZh ? "该猫咪尚未缴纳保证金" : "Deposit not paid yet");
+        else if (msg.includes("lock period not elapsed")) setVisitError(isZh ? "锁定期未满一年" : "Lock period not elapsed");
+        else setVisitError(msg.slice(0, 100));
       }
     } finally { setVisitLoading(false); }
   };
@@ -213,7 +174,7 @@ export function AdminPage() {
       setSharesResult(isZh ? "✅ 分账比例已更新" : "✅ Shares updated");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
-      if (!msg.includes("user rejected")) setSharesResult(isZh ? `❌ 失败：${msg.slice(0, 80)}` : `❌ Failed: ${msg.slice(0, 80)}`);
+      if (!msg.includes("user rejected")) setSharesResult(isZh ? `❌ 失败：${msg.slice(0,80)}` : `❌ Failed: ${msg.slice(0,80)}`);
     } finally { setSetSharesLoading(false); }
   };
 
@@ -228,28 +189,26 @@ export function AdminPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
       if (!msg.includes("user rejected")) {
-        if      (msg.includes("balance below minimum")) setDistributeResult(isZh ? "❌ 合约余额不足最低门槛" : "❌ Balance below minimum");
-        else if (msg.includes("no recipients"))         setDistributeResult(isZh ? "❌ 请先设置分账比例" : "❌ Set shares first");
-        else setDistributeResult(isZh ? `❌ 失败：${msg.slice(0, 80)}` : `❌ Failed: ${msg.slice(0, 80)}`);
+        if (msg.includes("balance below minimum")) setDistributeResult(isZh ? "❌ 合约余额不足最低门槛" : "❌ Balance below minimum");
+        else if (msg.includes("no recipients")) setDistributeResult(isZh ? "❌ 请先设置分账比例" : "❌ Set shares first");
+        else setDistributeResult(isZh ? `❌ 失败：${msg.slice(0,80)}` : `❌ Failed: ${msg.slice(0,80)}`);
       }
     } finally { setDistributeLoading(false); }
   };
 
   const statusStyle = (s: number) => {
-    if (s === 0) return { text: isZh?"待审批":"Pending",  color:"#d97706", bg:"rgba(217,119,6,0.1)",  border:"rgba(217,119,6,0.3)" };
-    if (s === 1) return { text: isZh?"已审批":"Approved", color:"#16a34a", bg:"rgba(22,163,74,0.1)",  border:"rgba(22,163,74,0.3)" };
-    if (s === 2) return { text: isZh?"已拒绝":"Rejected", color:"#dc2626", bg:"rgba(220,38,38,0.1)",  border:"rgba(220,38,38,0.3)" };
-    return             { text: isZh?"已关闭":"Closed",   color:"#6b7280", bg:"rgba(107,114,128,0.1)", border:"rgba(107,114,128,0.3)" };
+    if (s === 0) return { text: isZh?"待审批":"Pending",  color:"#d97706", bg:"rgba(217,119,6,0.1)",  border:"rgba(217,119,6,0.3)"  };
+    if (s === 1) return { text: isZh?"已审批":"Approved", color:"#16a34a", bg:"rgba(22,163,74,0.1)",  border:"rgba(22,163,74,0.3)"  };
+    if (s === 3) return { text: isZh?"已关闭":"Closed",   color:"#64748b", bg:"rgba(100,116,139,0.1)",border:"rgba(100,116,139,0.3)" };
+    return             { text: isZh?"已拒绝":"Rejected", color:"#dc2626", bg:"rgba(220,38,38,0.1)",  border:"rgba(220,38,38,0.3)"  };
   };
 
   const updateRow  = (i: number, k: keyof ShareRow, v: string) => setShareRows(rows => rows.map((r, idx) => idx===i ? {...r,[k]:v} : r));
   const addRow     = () => setShareRows(r => [...r, { addr:"", share:"" }]);
   const removeRow  = (i: number) => setShareRows(r => r.filter((_,idx) => idx !== i));
   const totalShare = shareRows.reduce((s, r) => s + (parseInt(r.share)||0), 0);
-
-  const pending  = shelters.filter(s => s.status === 0);
-  const approved = shelters.filter(s => s.status === 1);
-  const others   = shelters.filter(s => s.status >= 2);
+  const pending    = shelters.filter(s => s.status === 0);
+  const approved   = shelters.filter(s => s.status === 1);
 
   return (
     <div className="min-h-screen pt-20" style={{ background: "#fffbf5" }}>
@@ -267,7 +226,7 @@ export function AdminPage() {
               <h1 className="text-2xl font-black" style={{ color: "#92400e", fontFamily: "'Space Grotesk', sans-serif" }}>
                 {isZh ? "管理面板" : "Admin Panel"}
               </h1>
-              <p className="text-xs" style={{ color: "#b45309" }}>PurrChain · Admin · 多数投票制审批</p>
+              <p className="text-xs" style={{ color: "#b45309" }}>PurrChain · Admin</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -284,17 +243,6 @@ export function AdminPage() {
           </div>
         </div>
 
-        {/* 投票制说明 */}
-        <div className="p-4 rounded-2xl mb-6 flex items-start gap-3"
-          style={{ background:"rgba(249,115,22,0.05)", border:"1px solid rgba(249,115,22,0.15)" }}>
-          <Users size={16} color="#F97316" className="flex-shrink-0 mt-0.5" />
-          <p className="text-xs" style={{ color:"#92400e" }}>
-            {isZh
-              ? "机构审批采用多数投票制：超过半数的管理员（含 Owner）投票同意后，机构自动通过。每位管理员可随时改投。"
-              : "Approval uses majority voting: more than half of admins (incl. owner) must vote approve. Votes can be changed anytime."}
-          </p>
-        </div>
-
         {/* 钱包状态 */}
         {!isConnected ? (
           <div className="p-6 rounded-2xl text-center mb-6"
@@ -309,7 +257,8 @@ export function AdminPage() {
             </button>
           </div>
         ) : !isAdmin ? (
-          <div className="p-5 rounded-2xl mb-6" style={{ background:"rgba(220,38,38,0.06)", border:"1px solid rgba(220,38,38,0.18)" }}>
+          <div className="p-5 rounded-2xl mb-6"
+            style={{ background:"rgba(220,38,38,0.06)", border:"1px solid rgba(220,38,38,0.18)" }}>
             <p className="text-sm font-medium" style={{ color:"#dc2626" }}>
               ⚠️ {isZh ? "当前钱包非管理员，只能查看，无法执行写操作" : "Not an admin wallet — view only"}
             </p>
@@ -355,12 +304,7 @@ export function AdminPage() {
               <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background:"rgba(217,119,6,0.12)", color:"#d97706", border:"1px solid rgba(217,119,6,0.25)" }}>{pending.length}</span>
             </div>
             <div className="flex flex-col gap-3">
-              {pending.map(s => (
-                <ShelterVoteCard key={s.address} shelter={s} statusStyle={statusStyle}
-                  isAdmin={isAdmin} actionLoading={actionLoading}
-                  onVoteApprove={(addr, v) => voteApprove(addr, v)}
-                  onVoteClose={voteClose} isZh={isZh} />
-              ))}
+              {pending.map(s => <ShelterCard key={s.address} shelter={s} statusStyle={statusStyle} isAdmin={isAdmin} actionLoading={actionLoading} onVote={voteShelter} onClose={voteCloseShelter} isZh={isZh} />)}
             </div>
           </div>
         )}
@@ -374,56 +318,18 @@ export function AdminPage() {
               <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background:"rgba(22,163,74,0.12)", color:"#16a34a", border:"1px solid rgba(22,163,74,0.25)" }}>{approved.length}</span>
             </div>
             <div className="flex flex-col gap-3">
-              {approved.map(s => (
-                <ShelterVoteCard key={s.address} shelter={s} statusStyle={statusStyle}
-                  isAdmin={isAdmin} actionLoading={actionLoading}
-                  onVoteApprove={(addr, v) => voteApprove(addr, v)}
-                  onVoteClose={voteClose} isZh={isZh} />
-              ))}
+              {approved.map(s => <ShelterCard key={s.address} shelter={s} statusStyle={statusStyle} isAdmin={isAdmin} actionLoading={actionLoading} onVote={voteShelter} onClose={voteCloseShelter} isZh={isZh} />)}
             </div>
           </div>
         )}
 
-        {/* 已关闭/已拒绝 */}
-        {others.length > 0 && (
-          <div className="mb-8">
-            <div className="flex items-center gap-2 mb-4">
-              <Lock size={16} color="#6b7280" />
-              <h2 className="text-lg font-bold" style={{ color:"#92400e" }}>{isZh?"已关闭/已拒绝":"Closed / Rejected"}</h2>
-            </div>
-            <div className="flex flex-col gap-3">
-              {others.map(s => (
-                <ShelterVoteCard key={s.address} shelter={s} statusStyle={statusStyle}
-                  isAdmin={isAdmin} actionLoading={actionLoading}
-                  onVoteApprove={(addr, v) => voteApprove(addr, v)}
-                  onVoteClose={voteClose} isZh={isZh} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {!loading && shelters.length === 0 && (
-          <div className="p-12 rounded-2xl text-center mb-8" style={{ background:"rgba(249,115,22,0.03)", border:"1px dashed rgba(249,115,22,0.15)" }}>
-            <div className="text-4xl mb-3">🏠</div>
-            <p style={{ color:"#b45309" }}>{isZh?"暂无机构注册记录":"No shelters yet"}</p>
-          </div>
-        )}
-        {loading && (
-          <div className="p-12 text-center mb-8">
-            <div className="text-4xl mb-3 animate-spin inline-block">⚙️</div>
-            <p style={{ color:"#b45309" }}>{isZh?"读取链上数据中...":"Loading..."}</p>
-          </div>
-        )}
+        {!loading && shelters.length === 0 && <div className="p-12 rounded-2xl text-center mb-8" style={{ background:"rgba(249,115,22,0.03)", border:"1px dashed rgba(249,115,22,0.15)" }}><div className="text-4xl mb-3">🏠</div><p style={{ color:"#b45309" }}>{isZh?"暂无机构注册记录":"No shelters yet"}</p></div>}
+        {loading && <div className="p-12 text-center mb-8"><div className="text-4xl mb-3 animate-spin inline-block">⚙️</div><p style={{ color:"#b45309" }}>{isZh?"读取链上数据中...":"Loading..."}</p></div>}
 
         {/* 回访确认 */}
         <div className="mb-8 p-6 rounded-2xl" style={{ background:"#fff9f5", border:"1px solid rgba(249,115,22,0.12)" }}>
-          <div className="flex items-center gap-2 mb-3">
-            <CheckCircle size={16} color="#F97316" />
-            <h2 className="text-lg font-bold" style={{ color:"#92400e" }}>{isZh?"回访确认":"Home Visit Confirmation"}</h2>
-          </div>
-          <p className="text-xs mb-4" style={{ color:"#b45309" }}>
-            {isZh?"用户缴纳保证金满 1 年后可执行。通过 → 退还保证金 + mint Genesis NFT；不通过 → 保证金转给机构。":"After 1-year lock. Pass → refund + Genesis NFT. Fail → deposit to shelter."}
-          </p>
+          <div className="flex items-center gap-2 mb-3"><Home size={16} color="#F97316" /><h2 className="text-lg font-bold" style={{ color:"#92400e" }}>{isZh?"回访确认":"Home Visit Confirmation"}</h2></div>
+          <p className="text-xs mb-4" style={{ color:"#b45309" }}>{isZh?"用户缴纳保证金满 1 年后可执行。通过 → 退还保证金 + mint Genesis NFT；不通过 → 保证金转给机构。":"After 1-year deposit lock. Pass → refund + Genesis NFT. Fail → deposit to shelter."}</p>
           <div className="relative mb-4">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color:"#F97316" }} />
             <input value={visitCatId} onChange={e => { setVisitCatId(e.target.value); setVisitError(null); setVisitResult(null); }}
@@ -456,6 +362,8 @@ export function AdminPage() {
               <span className="text-sm font-black" style={{ color:"#F97316" }}>{vaultBalance} AVAX</span>
             </div>
           </div>
+          <p className="text-xs mb-5" style={{ color:"#b45309" }}>{isZh?"设置收款方和比例（万分比，总和必须等于 10000）。比例保存后，点击「触发分账」将合约 AVAX 分配给各收款方。":"Set recipients and shares (basis points, must sum to 10000). After saving, click Distribute to send AVAX."}</p>
+
           <div className="space-y-2 mb-3">
             <div className="grid grid-cols-12 gap-2 px-1">
               <p className="col-span-8 text-xs font-semibold" style={{ color:"#b45309" }}>{isZh?"收款方地址":"Recipient Address"}</p>
@@ -477,6 +385,7 @@ export function AdminPage() {
               </div>
             ))}
           </div>
+
           <div className="flex items-center justify-between mb-4">
             <button onClick={addRow} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
               style={{ background:"rgba(249,115,22,0.08)", border:"1px solid rgba(249,115,22,0.18)", color:"#c2410c", cursor:"pointer" }}>
@@ -487,8 +396,10 @@ export function AdminPage() {
               {isZh?`总计：${totalShare} / 10000`:`Total: ${totalShare} / 10000`}
             </span>
           </div>
+
           {sharesResult     && <p className="text-xs mb-3 font-semibold" style={{ color:sharesResult.startsWith("✅")?"#16a34a":"#dc2626" }}>{sharesResult}</p>}
           {distributeResult && <p className="text-xs mb-3 font-semibold" style={{ color:distributeResult.startsWith("✅")?"#16a34a":"#dc2626" }}>{distributeResult}</p>}
+
           <div className="grid grid-cols-2 gap-3">
             <button onClick={handleSetShares} disabled={setSharesLoading||!isAdmin||totalShare!==10000}
               className="py-3 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2"
@@ -508,114 +419,95 @@ export function AdminPage() {
   );
 }
 
-// ── 机构投票卡片 ──────────────────────────────────────────────
-function ShelterVoteCard({ shelter, statusStyle, isAdmin, actionLoading, onVoteApprove, onVoteClose, isZh }: {
+function ShelterCard({ shelter, statusStyle, isAdmin, actionLoading, onVote, onClose, isZh }: {
   shelter: ShelterInfo;
   statusStyle: (s: number) => { text: string; color: string; bg: string; border: string };
-  isAdmin: boolean; actionLoading: string | null;
-  onVoteApprove: (addr: string, approve: boolean) => void;
-  onVoteClose:   (addr: string) => void;
+  isAdmin: boolean;
+  actionLoading: string | null;
+  onVote: (addr: string, approve: boolean) => void;
+  onClose: (addr: string) => void;
   isZh: boolean;
 }) {
-  const sl        = statusStyle(shelter.status);
-  const isPending = shelter.status === 0;
+  const sl = statusStyle(shelter.status);
+  const isPending  = shelter.status === 0;
   const isApproved = shelter.status === 1;
-
-  const myVoteLabel = shelter.myVote === 1 ? (isZh?"我已投赞成":"I voted ✓") : shelter.myVote === -1 ? (isZh?"我已投反对":"I voted ✗") : null;
+  const isVotingYes   = actionLoading === shelter.address + "_yes";
+  const isVotingNo    = actionLoading === shelter.address + "_no";
+  const isVotingClose = actionLoading === shelter.address + "_close";
+  const anyLoading = isVotingYes || isVotingNo || isVotingClose;
 
   return (
-    <div className="p-5 rounded-2xl" style={{ background:"#fff9f5", border:"1px solid rgba(249,115,22,0.1)" }}>
-      {/* 机构基本信息 */}
-      <div className="flex items-start justify-between gap-4 mb-3">
+    <div className="rounded-2xl overflow-hidden"
+      style={{ background: "#fff9f5", border: "1px solid rgba(249,115,22,0.1)" }}>
+      {/* 机构信息行 */}
+      <div className="p-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-xl"
-            style={{ background:"rgba(249,115,22,0.1)", border:"1px solid rgba(249,115,22,0.2)" }}>🏠</div>
+            style={{ background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.2)" }}>🏠</div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-              <span className="font-bold" style={{ color:"#92400e", fontFamily:"'Space Grotesk', sans-serif" }}>{shelter.name}</span>
-              <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background:sl.bg, color:sl.color, border:`1px solid ${sl.border}` }}>{sl.text}</span>
-              {myVoteLabel && (
-                <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                  style={{ background: shelter.myVote===1?"rgba(22,163,74,0.1)":"rgba(220,38,38,0.1)", color: shelter.myVote===1?"#16a34a":"#dc2626", border:`1px solid ${shelter.myVote===1?"rgba(22,163,74,0.3)":"rgba(220,38,38,0.3)"}` }}>
-                  {myVoteLabel}
-                </span>
-              )}
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="font-bold" style={{ color: "#92400e", fontFamily: "'Space Grotesk', sans-serif" }}>{shelter.name}</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                style={{ background: sl.bg, color: sl.color, border: `1px solid ${sl.border}` }}>{sl.text}</span>
             </div>
-            <div className="text-xs mb-0.5" style={{ color:"#b45309" }}>📍 {shelter.location}</div>
-            <div className="text-xs font-mono truncate" style={{ color:"#d97706" }}>{shelter.address}</div>
+            <div className="text-xs mb-0.5" style={{ color: "#b45309" }}>📍 {shelter.location}</div>
+            <div className="text-xs font-mono truncate" style={{ color: "#d97706" }}>{shelter.address}</div>
           </div>
         </div>
         <a href={`https://testnet.snowtrace.io/address/${shelter.address}`} target="_blank" rel="noopener noreferrer"
-          className="p-2 rounded-lg flex-shrink-0" style={{ background:"rgba(249,115,22,0.08)", color:"#b45309" }}>
+          className="p-2 rounded-lg flex-shrink-0" style={{ background: "rgba(249,115,22,0.08)", color: "#b45309" }}>
           <ExternalLink size={14} />
         </a>
       </div>
 
-      {/* 投票进度条（待审批状态） */}
-      {isPending && (
-        <div className="mb-3 p-3 rounded-xl" style={{ background:"rgba(249,115,22,0.04)", border:"1px solid rgba(249,115,22,0.1)" }}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold" style={{ color:"#92400e" }}>
-              {isZh ? `审批进度（需 ${shelter.majority} 票）` : `Votes needed: ${shelter.majority}`}
-            </span>
-            <span className="text-xs" style={{ color:"#b45309" }}>
-              {isZh ? `赞成 ${shelter.approveCount} / 反对 ${shelter.rejectCount}` : `✓ ${shelter.approveCount}  ✗ ${shelter.rejectCount}`}
-            </span>
-          </div>
-          {/* 赞成进度条 */}
-          <div className="h-2 rounded-full overflow-hidden mb-1" style={{ background:"rgba(22,163,74,0.1)" }}>
-            <div className="h-full rounded-full transition-all" style={{ background:"#16a34a", width: `${Math.min(100, shelter.approveCount / shelter.majority * 100)}%` }} />
-          </div>
-        </div>
-      )}
-
-      {/* 关闭投票进度（已审批状态） */}
-      {isApproved && shelter.closeCount > 0 && (
-        <div className="mb-3 p-3 rounded-xl" style={{ background:"rgba(239,68,68,0.04)", border:"1px solid rgba(239,68,68,0.1)" }}>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold" style={{ color:"#dc2626" }}>
-              {isZh ? `关闭投票（${shelter.closeCount}/${shelter.closeMajority} 票）` : `Close votes: ${shelter.closeCount}/${shelter.closeMajority}`}
-            </span>
-          </div>
-          <div className="h-2 rounded-full overflow-hidden" style={{ background:"rgba(220,38,38,0.1)" }}>
-            <div className="h-full rounded-full" style={{ background:"#dc2626", width:`${Math.min(100, shelter.closeCount/shelter.closeMajority*100)}%` }} />
-          </div>
-        </div>
-      )}
-
-      {/* 操作按钮 */}
-      {isAdmin && (
-        <div className="flex gap-2 flex-wrap">
-          {isPending && (
-            <>
-              <button
-                onClick={() => onVoteApprove(shelter.address, true)}
-                disabled={actionLoading === shelter.address + "_approve"}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white"
-                style={{ background: shelter.myVote===1 ? "rgba(22,163,74,0.5)" : "linear-gradient(135deg,#16a34a,#15803d)", cursor:"pointer", opacity:actionLoading===shelter.address+"_approve"?0.7:1 }}>
-                <ThumbsUp size={12} />
-                {isZh ? (shelter.myVote===1?"已赞成 (改投)":"投票赞成") : (shelter.myVote===1?"Voted ✓ (change)":"Vote Approve")}
-              </button>
-              <button
-                onClick={() => onVoteApprove(shelter.address, false)}
-                disabled={actionLoading === shelter.address + "_reject"}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white"
-                style={{ background: shelter.myVote===-1 ? "rgba(220,38,38,0.5)" : "linear-gradient(135deg,#dc2626,#b91c1c)", cursor:"pointer", opacity:actionLoading===shelter.address+"_reject"?0.7:1 }}>
-                <ThumbsDown size={12} />
-                {isZh ? (shelter.myVote===-1?"已反对 (改投)":"投票反对") : (shelter.myVote===-1?"Voted ✗ (change)":"Vote Reject")}
-              </button>
-            </>
-          )}
-          {isApproved && (
+      {/* 待审批 → 投票区 */}
+      {isAdmin && isPending && (
+        <div className="px-4 pb-4">
+          <p className="text-xs mb-2" style={{ color: "#b45309" }}>
+            {isZh ? "超过半数管理员投票后自动生效" : "Auto-approved when majority votes"}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => onVoteClose(shelter.address)}
-              disabled={actionLoading === shelter.address + "_close"}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold"
-              style={{ background:"rgba(107,114,128,0.1)", border:"1px solid rgba(107,114,128,0.3)", color:"#6b7280", cursor:"pointer", opacity:actionLoading===shelter.address+"_close"?0.7:1 }}>
-              <Lock size={12} />
-              {isZh ? "投票关闭机构" : "Vote to Close"}
+              onClick={() => onVote(shelter.address, true)}
+              disabled={anyLoading}
+              className="py-2.5 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5"
+              style={{
+                background: isVotingYes ? "rgba(22,163,74,0.4)" : "linear-gradient(135deg,#16a34a,#15803d)",
+                cursor: anyLoading ? "not-allowed" : "pointer", opacity: isVotingYes ? 0.7 : 1,
+              }}>
+              {isVotingYes ? "⏳" : "✓"} {isZh ? "投票赞成" : "Vote Approve"}
             </button>
-          )}
+            <button
+              onClick={() => onVote(shelter.address, false)}
+              disabled={anyLoading}
+              className="py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+              style={{
+                background: isVotingNo ? "rgba(220,38,38,0.08)" : "rgba(220,38,38,0.08)",
+                border: "1px solid rgba(220,38,38,0.25)", color: "#dc2626",
+                cursor: anyLoading ? "not-allowed" : "pointer", opacity: isVotingNo ? 0.7 : 1,
+              }}>
+              {isVotingNo ? "⏳" : "✕"} {isZh ? "投票反对" : "Vote Reject"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 已审批 → 关闭投票 */}
+      {isAdmin && isApproved && (
+        <div className="px-4 pb-4">
+          <button
+            onClick={() => onClose(shelter.address)}
+            disabled={anyLoading}
+            className="w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+            style={{
+              background: "rgba(100,116,139,0.08)", border: "1px solid rgba(100,116,139,0.25)",
+              color: "#64748b", cursor: anyLoading ? "not-allowed" : "pointer", opacity: isVotingClose ? 0.7 : 1,
+            }}>
+            {isVotingClose ? "⏳" : "🔒"} {isZh ? "投票关闭机构" : "Vote to Close"}
+          </button>
+          <p className="text-xs mt-1.5 text-center" style={{ color: "#94a3b8" }}>
+            {isZh ? "超过半数投票后机构关闭，旗下猫咪归入已关闭" : "Closes when majority votes — cats move to Closed"}
+          </p>
         </div>
       )}
     </div>

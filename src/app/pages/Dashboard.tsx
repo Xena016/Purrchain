@@ -12,11 +12,11 @@ import { chainStatusToLocal, type ChainCat, type CatStatus } from "../data/cats"
 // ============================================================
 
 const STATUS_CONFIG: Record<CatStatus, { zh: string; en: string; color: string; bg: string; border: string }> = {
-  available:       { zh: "待领养",    en: "Available",     color: "#16a34a", bg: "rgba(22,163,74,0.1)",  border: "rgba(22,163,74,0.3)" },
-  cloudAdopted:    { zh: "云领养中",  en: "Cloud Adopted", color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.3)" },
-  pendingAdoption: { zh: "领养处理中",en: "Pending",       color: "#a855f7", bg: "rgba(168,85,247,0.1)", border: "rgba(168,85,247,0.3)" },
+  available:       { zh: "待领养",    en: "Available",     color: "#16a34a", bg: "rgba(22,163,74,0.1)",   border: "rgba(22,163,74,0.3)"   },
+  cloudAdopted:    { zh: "云领养中",  en: "Cloud Adopted", color: "#F97316", bg: "rgba(249,115,22,0.1)",  border: "rgba(249,115,22,0.3)"  },
+  pendingAdoption: { zh: "领养处理中",en: "Pending",       color: "#a855f7", bg: "rgba(168,85,247,0.1)",  border: "rgba(168,85,247,0.3)"  },
   adopted:         { zh: "已被领养",  en: "Adopted",       color: "#888",    bg: "rgba(136,136,136,0.1)", border: "rgba(136,136,136,0.3)" },
-  closed:          { zh: "已关闭",    en: "Closed",        color: "#6b7280", bg: "rgba(107,114,128,0.1)", border: "rgba(107,114,128,0.3)" },
+  closed:          { zh: "已关闭",    en: "Closed",        color: "#64748b", bg: "rgba(100,116,139,0.1)", border: "rgba(100,116,139,0.3)" },
 };
 
 const GENDER_LABEL = {
@@ -29,17 +29,16 @@ const GENDER_LABEL = {
 // ============================================================
 
 export function Dashboard() {
-  const { nftClaimed, welcomeClaimed, isConnected, lang } = useApp();
+  const { nftClaimed, welcomeClaimed, isConnected, lang, walletAddress } = useApp();
   const isZh = lang === "zh";
-  // 弹窗条件：已连接钱包，且（未领全家福 OR 已领全家福但未领PURR）
-  const [showModal, setShowModal] = useState(
-    isConnected && (!nftClaimed || !welcomeClaimed)
-  );
+  const [showModal, setShowModal] = useState(isConnected && (!nftClaimed || !welcomeClaimed));
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | CatStatus>("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "myCloud" | CatStatus>("all");
   const [cats, setCats] = useState<ChainCat[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // 用户云领养的猫 ID 集合（用于"我的云领养"tab）
+  const [myCloudCatIds, setMyCloudCatIds] = useState<Set<number>>(new Set());
 
   const loadCats = async () => {
     try {
@@ -49,10 +48,7 @@ export function Dashboard() {
       const countRaw = await c.catRegistry.catCount();
       const count = Number(countRaw);
 
-      if (count === 0) {
-        setCats([]);
-        return;
-      }
+      if (count === 0) { setCats([]); return; }
 
       const results: ChainCat[] = [];
       for (let i = 0; i < count; i++) {
@@ -61,12 +57,9 @@ export function Dashboard() {
             id: bigint; name: string; age: bigint; gender: string;
             description: string; stageURIs: string[]; shelter: string; status: number;
           };
-
           const uris = Array.from(cat.stageURIs) as string[];
           const stage = (uris.reduce((last, uri, idx) =>
             uri && uri !== "" ? idx + 1 : last, 1)) as 1 | 2 | 3 | 4;
-
-          // 尝试从 IPFS metadata 解析图片
           const firstUri = uris.find(u => u && u !== "") ?? "";
           let image = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&q=80";
           if (firstUri) {
@@ -79,27 +72,32 @@ export function Dashboard() {
                 image = json.image.startsWith("ipfs://")
                   ? json.image.replace("ipfs://", "https://ipfs.io/ipfs/") : json.image;
               }
-            } catch { /* fallback to default */ }
+            } catch { /* fallback */ }
           }
-
           results.push({
-            id: Number(cat.id),
-            name: cat.name,
-            age: Number(cat.age),
+            id: Number(cat.id), name: cat.name, age: Number(cat.age),
             gender: cat.gender === "female" ? "female" : "male",
-            description: cat.description,
-            stageURIs: uris,
-            shelter: cat.shelter,
-            shelterLocation: "",
+            description: cat.description, stageURIs: uris,
+            shelter: cat.shelter, shelterLocation: "",
             status: chainStatusToLocal(cat.status),
-            image,
-            stage,
-            isOnChain: true,
+            image, stage, isOnChain: true,
           });
-        } catch { /* skip failed cat */ }
+        } catch { /* skip */ }
       }
       setCats(results);
-    } catch (err) {
+
+      // 查用户的云领养记录（donationMintCount > 0 的猫）
+      if (walletAddress) {
+        const cloudIds = new Set<number>();
+        for (let i = 0; i < count; i++) {
+          try {
+            const cnt = await c.donationVault.donationMintCount(walletAddress, i);
+            if (Number(cnt) > 0) cloudIds.add(i);
+          } catch { /* skip */ }
+        }
+        setMyCloudCatIds(cloudIds);
+      }
+    } catch {
       setError(isZh ? "读取链上数据失败，请检查网络" : "Failed to load chain data");
     } finally {
       setLoading(false);
@@ -111,17 +109,26 @@ export function Dashboard() {
   const filtered = cats.filter(cat => {
     const matchSearch = cat.name.toLowerCase().includes(search.toLowerCase()) ||
       cat.description.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === "all" || cat.status === filterStatus;
+    let matchStatus = false;
+    if (filterStatus === "all") {
+      // 默认不显示 closed（归入「已关闭」单独tab）
+      matchStatus = cat.status !== "closed";
+    } else if (filterStatus === "myCloud") {
+      matchStatus = myCloudCatIds.has(cat.id);
+    } else {
+      matchStatus = cat.status === filterStatus;
+    }
     return matchSearch && matchStatus;
   });
 
   const statusCounts = {
-    all: cats.length,
+    all: cats.filter(c => c.status !== "closed").length,
     available: cats.filter(c => c.status === "available").length,
     cloudAdopted: cats.filter(c => c.status === "cloudAdopted").length,
     pendingAdoption: cats.filter(c => c.status === "pendingAdoption").length,
     adopted: cats.filter(c => c.status === "adopted").length,
     closed: cats.filter(c => c.status === "closed").length,
+    myCloud: myCloudCatIds.size,
   };
 
   return (
@@ -171,25 +178,37 @@ export function Dashboard() {
           </div>
 
           <div className="flex gap-2 flex-wrap">
-            {(["all", "available", "cloudAdopted", "pendingAdoption", "adopted", "closed"] as const).map(s => {
-              const label = s === "all"
-                ? (isZh ? "全部" : "All")
-                : (isZh ? STATUS_CONFIG[s].zh : STATUS_CONFIG[s].en);
-              const count = statusCounts[s];
-              const active = filterStatus === s;
+            {([
+              { key: "all",            zhLabel: "全部",     enLabel: "All"          },
+              { key: "available",      zhLabel: "待领养",   enLabel: "Available"    },
+              { key: "pendingAdoption",zhLabel: "领养处理中",enLabel: "Pending"      },
+              { key: "adopted",        zhLabel: "已被领养", enLabel: "Adopted"      },
+              { key: "closed",         zhLabel: "已关闭",   enLabel: "Closed"       },
+              ...(walletAddress ? [{ key: "myCloud", zhLabel: "我的云领养", enLabel: "My Cloud" }] : []),
+            ] as const).map(({ key, zhLabel, enLabel }) => {
+              const count = statusCounts[key as keyof typeof statusCounts] ?? 0;
+              const active = filterStatus === key;
+              const isCloud = key === "myCloud";
+              const isClosed = key === "closed";
               return (
                 <button
-                  key={s}
-                  onClick={() => setFilterStatus(s)}
+                  key={key}
+                  onClick={() => setFilterStatus(key as typeof filterStatus)}
                   className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
                   style={{
-                    background: active ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.05)",
-                    border: active ? "1px solid rgba(249,115,22,0.4)" : "1px solid rgba(249,115,22,0.12)",
-                    color: active ? "#F97316" : "#b45309",
+                    background: active
+                      ? isCloud ? "rgba(168,85,247,0.15)" : isClosed ? "rgba(100,116,139,0.15)" : "rgba(249,115,22,0.15)"
+                      : "rgba(249,115,22,0.05)",
+                    border: active
+                      ? isCloud ? "1px solid rgba(168,85,247,0.4)" : isClosed ? "1px solid rgba(100,116,139,0.4)" : "1px solid rgba(249,115,22,0.4)"
+                      : "1px solid rgba(249,115,22,0.12)",
+                    color: active
+                      ? isCloud ? "#a855f7" : isClosed ? "#64748b" : "#F97316"
+                      : "#b45309",
                     cursor: "pointer",
                   }}
                 >
-                  {label} ({count})
+                  {isZh ? zhLabel : enLabel} ({count})
                 </button>
               );
             })}
@@ -309,7 +328,7 @@ export function Dashboard() {
                       </div>
 
                       <div className="mt-3 pt-3 flex gap-2" style={{ borderTop: "1px solid rgba(249,115,22,0.1)" }}>
-                        {cat.status !== "adopted" && cat.status !== "closed" && (
+                        {!isAdopted && (
                           <div className="flex items-center gap-1 text-xs" style={{ color: "#F97316" }}>
                             <Heart size={11} />
                             {isZh ? "可捐款" : "Donate"}
