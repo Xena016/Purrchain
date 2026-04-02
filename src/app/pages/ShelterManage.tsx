@@ -69,6 +69,7 @@ export function ShelterManage() {
   const [myCats,        setMyCats]        = useState<CatRecord[]>([]);
   const [loadingCats,   setLoadingCats]   = useState(false);
   const [showForm,      setShowForm]      = useState(false);
+  const [editingCat,    setEditingCat]    = useState<CatRecord | null>(null);
 
   // 领养申请管理
   const [adoptionApps,   setAdoptionApps]   = useState<AdoptionApp[]>([]);
@@ -80,7 +81,7 @@ export function ShelterManage() {
   // 表单状态
   const [form, setForm] = useState({
     name: "", age: "1", gender: "female", description: "",
-    uri0: "", uri1: "", uri2: "", uri3: "",
+    uri0: "", uri1: "", uri2: "",
   });
   const [txLoading, setTxLoading] = useState(false);
   const [txSuccess, setTxSuccess] = useState<string | null>(null);
@@ -236,8 +237,8 @@ export function ShelterManage() {
     setTxLoading(true); setTxError(null); setTxSuccess(null);
     try {
       const c = getContracts(signer);
-      const stageURIs: [string, string, string, string] = [
-        form.uri0.trim(), form.uri1.trim(), form.uri2.trim(), form.uri3.trim(),
+      const stageURIs: [string, string, string] = [
+        form.uri0.trim(), form.uri1.trim(), form.uri2.trim(),
       ];
       const tx = await c.catRegistry.addCat(
         form.name.trim(),
@@ -248,7 +249,7 @@ export function ShelterManage() {
       );
       await (tx as ethers.ContractTransactionResponse).wait();
       setTxSuccess(isZh ? `✅ 猫咪「${form.name}」已成功登记上链！` : `✅ Cat "${form.name}" registered on-chain!`);
-      setForm({ name:"", age:"1", gender:"female", description:"", uri0:"", uri1:"", uri2:"", uri3:"" });
+      setForm({ name:"", age:"1", gender:"female", description:"", uri0:"", uri1:"", uri2:"" });
       // 刷新列表
       const c2 = getReadonlyContracts();
       const total = Number(await c2.catRegistry.catCount());
@@ -657,6 +658,115 @@ export function ShelterManage() {
           </div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ── 猫咪编辑模态框组件 ─────────────────────────────────────────
+export function EditCatModal({ cat, onClose, onSave, signer, isZh }: {
+  cat: { id: number; name: string; description: string; stageURIs: string[]; status: number };
+  onClose: () => void;
+  onSave: () => void;
+  signer: import("ethers").Signer | null;
+  isZh: boolean;
+}) {
+  // getContracts imported at top of file
+  const [loading, setLoading] = useState(false);
+  const [result,  setResult]  = useState<string | null>(null);
+
+  // Stage URI 更新
+  const [stageURI, setStageURI] = useState(["", "", "", ""]);
+  const [selectedStage, setSelectedStage] = useState(3); // 默认 stage4 genesis
+
+  const handleUpdateURI = async () => {
+    if (!signer) return;
+    setLoading(true); setResult(null);
+    try {
+      const { ethers } = await import("ethers");
+      const { ADDRESSES } = await import("../../lib/contracts");
+      const c = new ethers.Contract(ADDRESSES.catRegistry, [
+        "function updateCatStageURI(uint256 _catId, uint8 _stage, string calldata _uri) external"
+      ], signer);
+      const tx = await c.updateCatStageURI(cat.id, selectedStage, stageURI[selectedStage]);
+      await (tx as { wait: () => Promise<unknown> }).wait();
+      setResult(isZh ? `✅ Stage ${selectedStage + 1} URI 已更新` : `✅ Stage ${selectedStage + 1} URI updated`);
+      onSave();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "";
+      if (!msg.includes("user rejected")) setResult(`❌ ${msg.slice(0, 80)}`);
+    } finally { setLoading(false); }
+  };
+
+  const STAGE_LABELS_EDIT = ["Stage 1 幼猫", "Stage 2 少年猫", "Stage 3 成年猫", "Stage 4 Genesis"];
+  const PRESET_URIS = [
+    "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/cat_stage1.json",
+    "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/cat_stage2_junior.json",
+    "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/cat_stage3.json",
+    "ipfs://bafybeiewjp2e4gmewiotq6pi2snbfta2gltblnaymdhbzkhv2hcq3psij4/genesis.json",
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}>
+      <div className="w-full max-w-md rounded-3xl p-6 relative"
+        style={{ background: "#fffbf5", border: "1px solid rgba(249,115,22,0.2)", boxShadow: "0 20px 60px rgba(249,115,22,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-black text-lg" style={{ color: "#92400e" }}>
+            {isZh ? `编辑 · ${cat.name}` : `Edit · ${cat.name}`}
+          </h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg" style={{ background: "rgba(249,115,22,0.08)", color: "#b45309", cursor: "pointer" }}>✕</button>
+        </div>
+
+        {/* Stage URI 更新 */}
+        <div className="mb-4">
+          <p className="text-sm font-bold mb-3" style={{ color: "#92400e" }}>
+            {isZh ? "更新阶段图片 URI" : "Update Stage URI"}
+          </p>
+          <div className="flex gap-2 flex-wrap mb-3">
+            {STAGE_LABELS_EDIT.map((label, i) => (
+              <button key={i} onClick={() => setSelectedStage(i)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+                style={{
+                  background: selectedStage === i ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.05)",
+                  border: selectedStage === i ? "1px solid rgba(249,115,22,0.4)" : "1px solid rgba(249,115,22,0.12)",
+                  color: selectedStage === i ? "#F97316" : "#b45309",
+                  cursor: "pointer",
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* 当前 URI 显示 */}
+          {cat.stageURIs[selectedStage] && (
+            <div className="mb-2 px-3 py-2 rounded-xl text-xs font-mono break-all" style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.1)", color: "#b45309" }}>
+              {isZh ? "当前：" : "Current: "}{cat.stageURIs[selectedStage] || (isZh ? "（未设置）" : "(not set)")}
+            </div>
+          )}
+
+          <div className="flex gap-1.5 mb-2">
+            <button onClick={() => { const u = [...stageURI]; u[selectedStage] = PRESET_URIS[selectedStage]; setStageURI(u); }}
+              className="px-2 py-1 rounded-lg text-xs"
+              style={{ background: "rgba(249,115,22,0.1)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.2)", cursor: "pointer" }}>
+              {isZh ? "使用默认图片" : "Use default"}
+            </button>
+          </div>
+          <textarea
+            value={stageURI[selectedStage]}
+            onChange={e => { const u = [...stageURI]; u[selectedStage] = e.target.value; setStageURI(u); }}
+            placeholder="ipfs://..."
+            rows={2}
+            className="w-full px-3 py-2 rounded-xl outline-none text-xs font-mono mb-3 resize-none"
+            style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)", color: "#92400e" }}
+          />
+          {result && <p className="text-xs mb-3 font-semibold" style={{ color: result.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{result}</p>}
+          <button onClick={handleUpdateURI} disabled={loading || !stageURI[selectedStage].trim()}
+            className="w-full py-2.5 rounded-xl text-sm font-bold text-white"
+            style={{ background: (!stageURI[selectedStage].trim()) ? "rgba(249,115,22,0.3)" : "linear-gradient(135deg, #F97316, #ea580c)", cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
+            {loading ? (isZh ? "更新中..." : "Updating...") : (isZh ? `更新 Stage ${selectedStage + 1} URI` : `Update Stage ${selectedStage + 1} URI`)}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

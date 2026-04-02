@@ -37,10 +37,19 @@ export const CAT_REGISTRY_ABI = [
   "function getCat(uint256 _catId) view returns (tuple(uint256 id, string name, uint8 age, string gender, string description, string[4] stageURIs, address shelter, uint8 status))",
   "function isShelterApproved(address _shelter) view returns (bool)",
   "function registerShelter(string calldata _name, string calldata _location) external",
-  "function addCat(string calldata _name, uint8 _age, string calldata _gender, string calldata _description, string[4] calldata _stageURIs) external",
-  "function approveShelter(address _shelter) external",
-  "function rejectShelter(address _shelter) external",
+  "function addCat(string calldata _name, uint8 _age, string calldata _gender, string calldata _description, string[3] calldata _stageURIs) external",
+  // 投票审批（新接口，替代旧的 approveShelter）
+  "function voteApprove(address _shelter, bool _approve) external",
+  // 投票关闭机构
+  "function voteClose(address _shelter) external",
+  "function getApproveVotes(address _shelter) view returns (uint32 approveCount, uint32 rejectCount, uint256 majority)",
+  "function getCloseVotes(address _shelter) view returns (uint32 closeCount, uint256 majority)",
+  "function getMyApproveVote(address _shelter, address _voter) view returns (int8)",
+  "function adminCount() view returns (uint256)",
+  "function getAdminList() view returns (address[])",
   "function updateCatStageURI(uint256 _catId, uint8 _stage, string calldata _uri) external",
+  "function updateCatStatus(uint256 _catId, uint8 _status) external",
+  "function getCats(uint256 _offset, uint256 _limit) view returns (tuple(uint256 id, string name, uint8 age, string gender, string description, string[4] stageURIs, address shelter, uint8 status)[])",
   "event ShelterRegistered(address indexed shelter, string name, string location)",
   "function shelters(address) view returns (string name, string location, address wallet, uint8 status)",
 ] as const;

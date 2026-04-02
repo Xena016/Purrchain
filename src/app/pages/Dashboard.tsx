@@ -16,6 +16,7 @@ const STATUS_CONFIG: Record<CatStatus, { zh: string; en: string; color: string; 
   cloudAdopted:    { zh: "云领养中",  en: "Cloud Adopted", color: "#F97316", bg: "rgba(249,115,22,0.1)", border: "rgba(249,115,22,0.3)" },
   pendingAdoption: { zh: "领养处理中",en: "Pending",       color: "#a855f7", bg: "rgba(168,85,247,0.1)", border: "rgba(168,85,247,0.3)" },
   adopted:         { zh: "已被领养",  en: "Adopted",       color: "#888",    bg: "rgba(136,136,136,0.1)", border: "rgba(136,136,136,0.3)" },
+  closed:          { zh: "已关闭",    en: "Closed",        color: "#6b7280", bg: "rgba(107,114,128,0.1)", border: "rgba(107,114,128,0.3)" },
 };
 
 const GENDER_LABEL = {
@@ -120,6 +121,7 @@ export function Dashboard() {
     cloudAdopted: cats.filter(c => c.status === "cloudAdopted").length,
     pendingAdoption: cats.filter(c => c.status === "pendingAdoption").length,
     adopted: cats.filter(c => c.status === "adopted").length,
+    closed: cats.filter(c => c.status === "closed").length,
   };
 
   return (
@@ -169,7 +171,7 @@ export function Dashboard() {
           </div>
 
           <div className="flex gap-2 flex-wrap">
-            {(["all", "available", "cloudAdopted", "pendingAdoption", "adopted"] as const).map(s => {
+            {(["all", "available", "cloudAdopted", "pendingAdoption", "adopted", "closed"] as const).map(s => {
               const label = s === "all"
                 ? (isZh ? "全部" : "All")
                 : (isZh ? STATUS_CONFIG[s].zh : STATUS_CONFIG[s].en);
@@ -307,7 +309,7 @@ export function Dashboard() {
                       </div>
 
                       <div className="mt-3 pt-3 flex gap-2" style={{ borderTop: "1px solid rgba(249,115,22,0.1)" }}>
-                        {!isAdopted && (
+                        {cat.status !== "adopted" && cat.status !== "closed" && (
                           <div className="flex items-center gap-1 text-xs" style={{ color: "#F97316" }}>
                             <Heart size={11} />
                             {isZh ? "可捐款" : "Donate"}

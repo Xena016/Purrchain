@@ -2,7 +2,7 @@
 //  cats.ts — 只保留类型定义和工具函数，不含假数据
 // ============================================================
 
-export type CatStatus = "available" | "cloudAdopted" | "pendingAdoption" | "adopted";
+export type CatStatus = "available" | "cloudAdopted" | "pendingAdoption" | "adopted" | "closed";
 
 export interface Cat {
   id: number;
@@ -57,6 +57,7 @@ export function getStatusLabel(status: CatStatus, lang: "zh" | "en" = "zh"): str
       case "cloudAdopted":    return "Cloud Adopted";
       case "pendingAdoption": return "Pending";
       case "adopted":         return "Adopted";
+      case "closed":          return "Closed";
     }
   }
   switch (status) {
@@ -64,6 +65,7 @@ export function getStatusLabel(status: CatStatus, lang: "zh" | "en" = "zh"): str
     case "cloudAdopted":    return "云领养中";
     case "pendingAdoption": return "领养处理中";
     case "adopted":         return "已被领养";
+    case "closed":          return "已关闭";
   }
 }
 
@@ -73,6 +75,7 @@ export function getStatusColor(status: CatStatus): string {
     case "cloudAdopted":    return "text-cyan-400 bg-cyan-400/10 border-cyan-400/30";
     case "pendingAdoption": return "text-amber-400 bg-amber-400/10 border-amber-400/30";
     case "adopted":         return "text-purple-400 bg-purple-400/10 border-purple-400/30";
+    case "closed":          return "text-gray-400 bg-gray-400/10 border-gray-400/30";
   }
 }
 
@@ -82,6 +85,7 @@ export function chainStatusToLocal(n: number): CatStatus {
     case 1: return "cloudAdopted";
     case 2: return "pendingAdoption";
     case 3: return "adopted";
+    case 4: return "closed";
     default: return "available";
   }
 }
