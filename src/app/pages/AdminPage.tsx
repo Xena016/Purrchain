@@ -49,45 +49,92 @@ export function AdminPage() {
   const [distributeResult,  setDistributeResult]  = useState<string | null>(null);
   const [sharesResult,      setSharesResult]      = useState<string | null>(null);
 
+  // localStorage key for caching scanned block range
+  // key 包含合约地址，合约重部署后自动失效
+  const CACHE_KEY = "purrchain_shelter_addrs_" + ADDRESSES.catRegistry.slice(2, 10).toLowerCase();
+  const BLOCK_KEY = "purrchain_last_block_"    + ADDRESSES.catRegistry.slice(2, 10).toLowerCase();
+
   const loadShelters = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const provider = new ethers.JsonRpcProvider("https://api.avax-test.network/ext/bc/C/rpc");
       const c = getReadonlyContracts();
+      const provider = new ethers.JsonRpcProvider("https://api.avax-test.network/ext/bc/C/rpc");
+
+      // ── 读缓存的机构地址 + 上次扫到的区块 ──
+      let cachedAddrs: string[] = [];
+      let lastBlock = 0;
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (raw) cachedAddrs = JSON.parse(raw) as string[];
+        lastBlock = parseInt(localStorage.getItem(BLOCK_KEY) ?? "0") || 0;
+      } catch { /* localStorage 不可用时忽略 */ }
+
+      const shelterAddrs = new Set<string>(cachedAddrs);
+      const sig    = ethers.id("ShelterRegistered(address,string,string)");
       const latest = await provider.getBlockNumber();
-      // 合约今天部署，从当前区块往前 100000 块（约 2 天）开始扫，避免从区块 0 扫全链
-      const SCAN_WINDOW = 100000;
-      const fromBlock = Math.max(0, latest - SCAN_WINDOW);
-      const events: ethers.Log[] = [];
-      for (let from = fromBlock; from <= latest; from += 2000) {
-        const chunk = await provider.getLogs({
-          address: ADDRESSES.catRegistry,
-          // ShelterRegistered(address indexed shelter, string name, string location)
-          topics: ["0xd77472e230176dcc3b63ebe73b71039773ff62dfb43d8e850824df0ddb2ae797"],
-          fromBlock: from, toBlock: Math.min(from + 1999, latest),
-        });
-        events.push(...chunk);
-      }
-      const iface = new ethers.Interface([
-        "event ShelterRegistered(address indexed shelter, string name, string location)",
-      ]);
-      const shelterList: ShelterInfo[] = await Promise.all(
-        events.map(async (event) => {
-          const addr = "0x" + event.topics[1].slice(26);
-          let name = "", location = "";
-          try { const p = iface.parseLog({ topics: [...event.topics], data: event.data }); name = p?.args[1] ?? ""; location = p?.args[2] ?? ""; } catch {}
+
+      // ── 增量扫描：只扫上次之后的新区块 ──
+      // 首次（lastBlock=0）从合约部署前一天开始扫；之后只扫增量
+      // Fuji 出块 ~2s，86400块≈2天，足够兜底
+      const scanFrom = lastBlock > 0 ? lastBlock + 1 : Math.max(0, latest - 86400);
+      if (scanFrom <= latest) {
+        for (let from = scanFrom; from <= latest; from += 2000) {
           try {
-            const info = await c.catRegistry.shelters(addr) as { name: string; location: string; wallet: string; status: number };
-            return { address: addr, name: info.name || name, location: info.location || location, wallet: info.wallet || addr, status: Number(info.status) };
-          } catch { return { address: addr, name, location, wallet: addr, status: 0 }; }
-        })
-      );
+            const logs = await provider.getLogs({
+              address: ADDRESSES.catRegistry,
+              topics:  [sig],
+              fromBlock: from,
+              toBlock:   Math.min(from + 1999, latest),
+            });
+            for (const log of logs) {
+              shelterAddrs.add(("0x" + log.topics[1].slice(26)).toLowerCase());
+            }
+          } catch { /* 某批失败跳过，不影响其他批 */ }
+        }
+        // 保存最新扫描进度到 localStorage
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify(Array.from(shelterAddrs)));
+          localStorage.setItem(BLOCK_KEY, String(latest));
+        } catch { /* 写入失败忽略 */ }
+      }
+
+      // ── 补充：从猫咪档案兜底收集机构地址 ──
+      try {
+        const total = Number(await c.catRegistry.catCount());
+        const BATCH = 20;
+        for (let i = 0; i < total; i += BATCH) {
+          const ids  = Array.from({ length: Math.min(BATCH, total - i) }, (_, k) => i + k);
+          const cats = await Promise.allSettled(ids.map(id => c.catRegistry.getCat(id)));
+          for (const r of cats) {
+            if (r.status === "fulfilled") {
+              const cat = r.value as { shelter: string };
+              if (cat.shelter && cat.shelter !== ethers.ZeroAddress)
+                shelterAddrs.add(cat.shelter.toLowerCase());
+            }
+          }
+        }
+      } catch { /* 读猫咪失败不影响主流程 */ }
+
+      // ── 批量读机构链上信息 ──
+      const shelterList: ShelterInfo[] = (
+        await Promise.all(
+          Array.from(shelterAddrs).map(async (addr) => {
+            try {
+              const info = await c.catRegistry.shelters(addr) as {
+                name: string; location: string; wallet: string; status: number;
+              };
+              if (!info.name) return null;
+              return { address: addr, name: info.name, location: info.location, wallet: info.wallet || addr, status: Number(info.status) };
+            } catch { return null; }
+          })
+        )
+      ).filter((s): s is ShelterInfo => s !== null);
+
       setShelters(shelterList);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(isZh ? `读取链上数据失败：${msg.slice(0, 80)}` : `Failed to load chain data: ${msg.slice(0, 80)}`);
-    }
-    finally { setLoading(false); }
+      setError(isZh ? `读取链上数据失败：${msg.slice(0, 80)}` : `Failed: ${msg.slice(0, 80)}`);
+    } finally { setLoading(false); }
   }, [isZh]);
 
   const loadVaultBalance = useCallback(async () => {
@@ -236,6 +283,19 @@ export function AdminPage() {
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
               {isZh ? "刷新" : "Refresh"}
             </button>
+            <button onClick={() => {
+                // 清除 localStorage 缓存，下次刷新时从头全量扫
+                try {
+                  Object.keys(localStorage).filter(k => k.startsWith("purrchain_")).forEach(k => localStorage.removeItem(k));
+                } catch {}
+                loadShelters(); loadVaultBalance();
+              }} disabled={loading}
+              title={isZh ? "清除缓存并全量重新扫描" : "Clear cache & full rescan"}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+              style={{ background:"rgba(249,115,22,0.05)", border:"1px solid rgba(249,115,22,0.1)", color:"#b45309", cursor:"pointer" }}>
+              <RefreshCw size={14} />
+              {isZh ? "全量扫描" : "Full Scan"}
+            </button>
             <button onClick={() => navigate("/")} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
               style={{ background:"rgba(249,115,22,0.06)", border:"1px solid rgba(249,115,22,0.1)", color:"#b45309", cursor:"pointer" }}>
               <ArrowLeft size={14} />{isZh ? "返回" : "Back"}
@@ -285,7 +345,7 @@ export function AdminPage() {
           {[
             { label:isZh?"待审批":"Pending",  count:pending.length,  color:"#d97706" },
             { label:isZh?"已审批":"Approved", count:approved.length, color:"#16a34a" },
-            { label:isZh?"总机构":"Total",    count:shelters.length, color:"#F97316" },
+            { label:isZh?"已通过机构":"Approved Total", count:approved.length, color:"#F97316" },
           ].map(item => (
             <div key={item.label} className="p-4 rounded-2xl text-center"
               style={{ background:"#fff9f5", border:"1px solid rgba(249,115,22,0.1)" }}>

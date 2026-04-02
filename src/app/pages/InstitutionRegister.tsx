@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { getContracts } from "../../lib/contracts";
 import type { ReactNode } from "react";
@@ -47,19 +47,31 @@ export function InstitutionRegister() {
     return true;
   };
 
-const handleSubmit = async () => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
     if (!isConnected || !signer) { await connectWallet(); return; }
     if (!form.name || !form.location) { setSubmitError("请填写机构名称和所在城市"); return; }
+    setSubmitting(true);
     try {
       setSubmitError(null);
       const c = getContracts(signer);
-      const tx = await c.catRegistry.registerShelter(form.name, form.location);
+      // location 拼接城市+地址，方便链上展示
+      const locationStr = form.address ? (form.location + " " + form.address).trim() : form.location;
+      const tx = await c.catRegistry.registerShelter(form.name, locationStr);
       await (tx as any).wait();
       setSubmitted(true);
     } catch (err: any) {
       if (!err?.message?.includes("user rejected")) {
-        setSubmitError(err?.message?.slice(0, 100) ?? "提交失败");
+        const msg: string = err?.message ?? "提交失败";
+        if (msg.includes("Already registered")) {
+          setSubmitError("该钱包地址已注册过机构，请勿重复提交");
+        } else {
+          setSubmitError(msg.slice(0, 120));
+        }
       }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -337,6 +349,11 @@ const handleSubmit = async () => {
             </AnimatePresence>
 
             {/* Nav buttons */}
+            {submitError && (
+              <div className="mt-4 px-4 py-3 rounded-xl text-xs" style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.2)", color: "#dc2626" }}>
+                ⚠️ {submitError}
+              </div>
+            )}
             <div className="flex gap-3 mt-6">
               {step > 0 && (
                 <button
@@ -353,7 +370,7 @@ const handleSubmit = async () => {
               )}
               <button
                 onClick={step === STEPS.length - 1 ? handleSubmit : () => setStep((s) => s + 1)}
-                disabled={!canNext()}
+                disabled={!canNext() || submitting}
                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm text-white transition-all"
                 style={{
                   background: canNext() ? "linear-gradient(135deg, #F97316, #fbbf24)" : "rgba(249,115,22,0.12)",
@@ -363,7 +380,7 @@ const handleSubmit = async () => {
                   fontFamily: "'Space Grotesk', sans-serif"
                 }}
               >
-                {step === STEPS.length - 1 ? "提交审核" : "下一步"}
+                {step === STEPS.length - 1 ? (submitting ? "提交中…" : "提交审核") : "下一步"}
                 {step < STEPS.length - 1 && <ChevronRight size={15} />}
               </button>
             </div>
