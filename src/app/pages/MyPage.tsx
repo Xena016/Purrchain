@@ -293,6 +293,8 @@ interface NFTItem {
   stage: number;
   image: string;
   name: string;
+  description: string;
+  metaName: string; // metadata里的name字段
 }
 
 async function ipfsToHttp(uri: string): Promise<string> {
@@ -302,14 +304,18 @@ async function ipfsToHttp(uri: string): Promise<string> {
     : uri;
 }
 
-async function fetchNFTImage(tokenURIValue: string): Promise<string> {
-  if (!tokenURIValue) return "";
+async function fetchNFTMeta(tokenURIValue: string): Promise<{ image: string; description: string; name: string }> {
+  if (!tokenURIValue) return { image: "", description: "", name: "" };
   try {
     const url = await ipfsToHttp(tokenURIValue);
-    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
-    const json = await res.json() as { image?: string; name?: string };
-    return json.image ? await ipfsToHttp(json.image) : "";
-  } catch { return ""; }
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const json = await res.json() as { image?: string; name?: string; description?: string };
+    return {
+      image: json.image ? await ipfsToHttp(json.image) : "",
+      description: json.description ?? "",
+      name: json.name ?? "",
+    };
+  } catch { return { image: "", description: "", name: "" }; }
 }
 
 function NFTPanel({ isZh }: { isZh: boolean }) {
@@ -344,12 +350,12 @@ function NFTPanel({ isZh }: { isZh: boolean }) {
               };
               const nftType = Number(info.nftType);
               const stage   = Number(info.stage);
-              const image   = await fetchNFTImage(info.tokenURIValue);
+              const meta    = await fetchNFTMeta(info.tokenURIValue);
               const typeInfo = NFT_TYPE_LABEL[nftType];
-              const name = stage > 0
-                ? `${typeInfo?.zh ?? "NFT"} Stage ${stage}`
-                : (typeInfo?.zh ?? "NFT");
-              found.push({ tokenId, nftType, stage, image, name });
+              const displayName = stage > 0
+                ? `${isZh ? (typeInfo?.zh ?? "NFT") : (typeInfo?.en ?? "NFT")} Stage ${stage}`
+                : (isZh ? (typeInfo?.zh ?? "NFT") : (typeInfo?.en ?? "NFT"));
+              found.push({ tokenId, nftType, stage, image: meta.image, name: displayName, description: meta.description, metaName: meta.name });
             } catch { /* token已销毁或其他错误，跳过 */ }
           }));
           setProgress(Math.round(((i + 10) / total) * 100));
@@ -421,8 +427,11 @@ function NFTPanel({ isZh }: { isZh: boolean }) {
                     {isZh ? typeInfo?.zh : typeInfo?.en}
                   </span>
                 </div>
-                <p className="text-xs font-bold truncate" style={{ color: "#92400e" }}>{nft.name}</p>
+                <p className="text-xs font-bold truncate" style={{ color: "#92400e" }}>{nft.metaName || nft.name}</p>
                 <p className="text-xs font-mono mt-0.5" style={{ color: "#d97706" }}>#{nft.tokenId}</p>
+                {nft.description && (
+                  <p className="text-xs mt-1.5 leading-relaxed line-clamp-2" style={{ color: "#b45309" }}>{nft.description}</p>
+                )}
               </div>
             </div>
           );

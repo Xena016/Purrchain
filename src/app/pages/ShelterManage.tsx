@@ -84,10 +84,14 @@ export function ShelterManage() {
   const [txSuccess, setTxSuccess] = useState<string | null>(null);
   const [txError,   setTxError]   = useState<string | null>(null);
 
-  // 编辑已有猫咪（状态 + stage4 URI）
+  // 编辑已有猫咪（状态 + 所有阶段URI + 描述）
   const [editCatId,     setEditCatId]     = useState<number | null>(null);
   const [editStatus,    setEditStatus]    = useState<number>(0);
   const [editGenesis,   setEditGenesis]   = useState("");
+  const [editStage0,    setEditStage0]    = useState("");
+  const [editStage1,    setEditStage1]    = useState("");
+  const [editStage2,    setEditStage2]    = useState("");
+  const [editDesc,      setEditDesc]      = useState("");
   const [editLoading,   setEditLoading]   = useState(false);
   const [editResult,    setEditResult]    = useState<string | null>(null);
 
@@ -279,7 +283,7 @@ export function ShelterManage() {
     } finally { setTxLoading(false); }
   };
 
-  // 编辑猫咪：更新状态 or 设置 genesis URI
+  // 编辑猫咪：更新状态 / 描述 / 各阶段 URI
   const handleEditCat = async () => {
     if (!signer || editCatId === null) return;
     setEditLoading(true); setEditResult(null);
@@ -292,16 +296,22 @@ export function ShelterManage() {
         ],
         signer
       );
-      // 更新状态（只允许 Available=0/CloudAdopted=1，机构不能手动设 Adopted/Closed）
       const cat = myCats.find(c => c.id === editCatId);
+
+      // 更新状态
       if (cat && editStatus !== cat.status) {
         const tx = await contract.updateCatStatus(editCatId, editStatus);
         await tx.wait();
       }
-      // 如果填了 genesis URI，设置 stage3
-      if (editGenesis.trim()) {
-        const tx = await contract.updateCatStageURI(editCatId, 3, editGenesis.trim());
-        await tx.wait();
+      // 更新各阶段 URI（只有填了才更新）
+      const stageUpdates: [number, string][] = [
+        [0, editStage0], [1, editStage1], [2, editStage2], [3, editGenesis],
+      ];
+      for (const [stage, uri] of stageUpdates) {
+        if (uri.trim()) {
+          const tx = await contract.updateCatStageURI(editCatId, stage, uri.trim());
+          await tx.wait();
+        }
       }
       setEditResult(isZh ? "✅ 更新成功" : "✅ Updated");
       // 刷新
@@ -311,9 +321,10 @@ export function ShelterManage() {
         stageURIs: string[]; shelter: string; status: number;
       };
       setMyCats(prev => prev.map(c => c.id === editCatId ? {
-        ...c, status: Number(updatedCat.status), stageURIs: Array.from(updatedCat.stageURIs)
+        ...c, status: Number(updatedCat.status), stageURIs: Array.from(updatedCat.stageURIs),
+        description: updatedCat.description,
       } : c));
-      setEditGenesis("");
+      setEditGenesis(""); setEditStage0(""); setEditStage1(""); setEditStage2(""); setEditDesc("");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
       if (!msg.includes("user rejected")) setEditResult(isZh ? `❌ 失败：${msg.slice(0, 80)}` : `❌ Failed: ${msg.slice(0, 80)}`);
@@ -611,7 +622,16 @@ export function ShelterManage() {
                     <button
                       onClick={() => {
                         if (isEditing) { setEditCatId(null); setEditResult(null); }
-                        else { setEditCatId(cat.id); setEditStatus(cat.status); setEditGenesis(""); setEditResult(null); }
+                        else {
+                          setEditCatId(cat.id);
+                          setEditStatus(cat.status);
+                          setEditGenesis("");
+                          setEditStage0("");
+                          setEditStage1("");
+                          setEditStage2("");
+                          setEditDesc("");
+                          setEditResult(null);
+                        }
                       }}
                       className="flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold"
                       style={{ background: isEditing ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.2)", color: "#c2410c", cursor: "pointer" }}>
@@ -622,10 +642,11 @@ export function ShelterManage() {
                   {/* 编辑面板 */}
                   {isEditing && (
                     <div className="px-4 pb-4 border-t" style={{ borderColor: "rgba(249,115,22,0.1)" }}>
+                      {/* 状态 */}
                       <p className="text-xs font-semibold mt-3 mb-2" style={{ color: "#F97316" }}>
                         {isZh ? "更新猫咪状态" : "Update Status"}
                       </p>
-                      <div className="flex gap-2 flex-wrap mb-3">
+                      <div className="flex gap-2 flex-wrap mb-4">
                         {([
                           { val: 0, zh: "待领养", en: "Available" },
                           { val: 1, zh: "云领养中", en: "Cloud Adopted" },
@@ -642,24 +663,56 @@ export function ShelterManage() {
                         ))}
                       </div>
 
-                      <p className="text-xs font-semibold mb-1.5" style={{ color: "#a855f7" }}>
-                        ✨ {isZh ? "设置 Genesis NFT 图片（Stage 4）" : "Set Genesis NFT Image (Stage 4)"}
+                      {/* 各成长阶段 URI */}
+                      <p className="text-xs font-semibold mb-2" style={{ color: "#F97316" }}>
+                        📷 {isZh ? "成长阶段图片 URI（留空不修改）" : "Stage URIs (leave blank = no change)"}
                       </p>
+                      {[
+                        { label: isZh ? "Stage 1 幼猫" : "Stage 1 Kitten", val: editStage0, set: setEditStage0, preset: PRESET_STAGE_URIS[0].uri, cur: cat.stageURIs[0] },
+                        { label: isZh ? "Stage 2 少年猫" : "Stage 2 Junior", val: editStage1, set: setEditStage1, preset: PRESET_STAGE_URIS[1].uri, cur: cat.stageURIs[1] },
+                        { label: isZh ? "Stage 3 成年猫" : "Stage 3 Adult", val: editStage2, set: setEditStage2, preset: PRESET_STAGE_URIS[2].uri, cur: cat.stageURIs[2] },
+                      ].map(({ label, val, set, preset, cur }) => (
+                        <div key={label} className="mb-3">
+                          <label className="block text-xs font-medium mb-1" style={{ color: "#92400e" }}>{label}</label>
+                          {cur && <p className="text-xs mb-1 font-mono truncate" style={{ color: "#d97706" }}>
+                            {isZh ? "当前：" : "Now: "}{cur.slice(0, 45)}…
+                          </p>}
+                          <div className="flex gap-1.5 mb-1">
+                            <button onClick={() => set(preset)} className="px-2 py-1 rounded-lg text-xs"
+                              style={{ background: "rgba(249,115,22,0.1)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.2)", cursor: "pointer" }}>
+                              {isZh ? "使用默认" : "Default"}
+                            </button>
+                            {val && <button onClick={() => set("")} className="px-2 py-1 rounded-lg text-xs"
+                              style={{ background: "rgba(220,38,38,0.07)", color: "#dc2626", border: "1px solid rgba(220,38,38,0.15)", cursor: "pointer" }}>
+                              {isZh ? "清空" : "Clear"}
+                            </button>}
+                          </div>
+                          <input value={val} onChange={e => set(e.target.value)} placeholder="ipfs://... 或留空"
+                            className="w-full px-3 py-2 rounded-xl outline-none text-xs font-mono"
+                            style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)", color: "#92400e" }} />
+                        </div>
+                      ))}
+
+                      {/* Genesis URI */}
+                      <p className="text-xs font-semibold mb-1.5 mt-1" style={{ color: "#a855f7" }}>
+                        ✨ {isZh ? "Stage 4 Genesis（真实领养专属）" : "Stage 4 Genesis (adoption reward)"}
+                      </p>
+                      {hasGenesis && <p className="text-xs mb-1 font-mono truncate" style={{ color: "#d97706" }}>
+                        {isZh ? "当前：" : "Now: "}{cat.stageURIs[3].slice(0, 45)}…
+                      </p>}
                       <div className="flex gap-1.5 mb-1.5">
-                        <button onClick={() => setEditGenesis(GENESIS_PRESET_URI)}
-                          className="px-2 py-1 rounded-lg text-xs"
+                        <button onClick={() => setEditGenesis(GENESIS_PRESET_URI)} className="px-2 py-1 rounded-lg text-xs"
                           style={{ background: "rgba(168,85,247,0.1)", color: "#a855f7", border: "1px solid rgba(168,85,247,0.2)", cursor: "pointer" }}>
                           {isZh ? "使用默认图片" : "Use default"}
                         </button>
-                        {editGenesis && <button onClick={() => setEditGenesis("")}
-                          className="px-2 py-1 rounded-lg text-xs"
+                        {editGenesis && <button onClick={() => setEditGenesis("")} className="px-2 py-1 rounded-lg text-xs"
                           style={{ background: "rgba(220,38,38,0.07)", color: "#dc2626", border: "1px solid rgba(220,38,38,0.15)", cursor: "pointer" }}>
                           {isZh ? "清空" : "Clear"}
                         </button>}
                       </div>
                       <input value={editGenesis} onChange={e => setEditGenesis(e.target.value)}
                         placeholder={hasGenesis ? cat.stageURIs[3] : "ipfs://..."}
-                        className="w-full px-3 py-2 rounded-xl outline-none text-xs font-mono mb-3"
+                        className="w-full px-3 py-2 rounded-xl outline-none text-xs font-mono mb-4"
                         style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.18)", color: "#92400e" }} />
 
                       {editResult && <p className="text-xs mb-2 font-semibold"

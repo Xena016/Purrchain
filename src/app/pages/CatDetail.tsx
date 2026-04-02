@@ -51,26 +51,34 @@ function useCat(id: number) {
         const stage = (uris.reduce((last, uri, idx) =>
           uri && uri !== "" ? idx + 1 : last, 1)) as 1 | 2 | 3 | 4;
 
-        const firstUri = uris.find(u => u && u !== "") ?? "";
-        let image = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&q=80";
-        if (firstUri) {
+        // 读取机构地点
+        let shelterLocation = "";
+        try {
+          const shelterInfo = await c.catRegistry.shelters(raw.shelter) as { name: string; location: string };
+          shelterLocation = shelterInfo.location ?? "";
+        } catch { /* ignore */ }
+
+        // 辅助函数：从 IPFS URI 取图片 URL
+        const fetchImageFromUri = async (uri: string): Promise<string> => {
+          if (!uri) return "";
           try {
-            const httpUri = firstUri.startsWith("ipfs://")
-              ? firstUri.replace("ipfs://", "https://ipfs.io/ipfs/") : firstUri;
-            const res = await fetch(httpUri, { signal: AbortSignal.timeout(5000) });
+            const httpUri = uri.startsWith("ipfs://") ? uri.replace("ipfs://", "https://ipfs.io/ipfs/") : uri;
+            const res = await fetch(httpUri, { signal: AbortSignal.timeout(8000) });
             const json = await res.json() as { image?: string };
-            if (json.image) {
-              image = json.image.startsWith("ipfs://")
-                ? json.image.replace("ipfs://", "https://ipfs.io/ipfs/") : json.image;
-            }
+            if (json.image) return json.image.startsWith("ipfs://") ? json.image.replace("ipfs://", "https://ipfs.io/ipfs/") : json.image;
           } catch { /* fallback */ }
-        }
+          return "";
+        };
+
+        const fallbackImg = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&q=80";
+        const firstUri = uris.find(u => u && u !== "") ?? "";
+        const image = (await fetchImageFromUri(firstUri)) || fallbackImg;
 
         setCat({
           id, name: raw.name, age: Number(raw.age),
           gender: raw.gender === "female" ? "female" : "male",
           description: raw.description, stageURIs: uris,
-          shelter: raw.shelter, shelterLocation: "",
+          shelter: raw.shelter, shelterLocation,
           status: chainStatusToLocal(raw.status),
           image, stage, isOnChain: true,
         });
@@ -126,6 +134,10 @@ export function CatDetail() {
   const catId = Number(id);
   const { cat, loading } = useCat(catId);
 
+  // 阶段图片切换
+  const [selectedStage, setSelectedStage] = useState<number | null>(null);
+  const [stageImages, setStageImages] = useState<Record<number, string>>({});
+
   // Modal 状态
   const [showAdoptModal,  setShowAdoptModal]  = useState(false);
   const [showDonateModal, setShowDonateModal] = useState(false);
@@ -142,11 +154,30 @@ export function CatDetail() {
   const [donateAmount,    setDonateAmount]    = useState("0.1");
   const [donationTotal,   setDonationTotal]   = useState("0");
   const [remainingToNext, setRemainingToNext] = useState("0.1");
+  const [donateNFTNotice, setDonateNFTNotice] = useState<string | null>(null);
 
   // 领养申请数据
   const [appInfo,       setAppInfo]       = useState<AppInfo | null>(null);
   const [depositAmount, setDepositAmount] = useState("0.1");
   const [lockRemaining, setLockRemaining] = useState<number>(0);
+
+  // 加载各阶段图片
+  useEffect(() => {
+    if (!cat) return;
+    const fetchStageImg = async (uri: string, stage: number) => {
+      if (!uri) return;
+      try {
+        const httpUri = uri.startsWith("ipfs://") ? uri.replace("ipfs://", "https://ipfs.io/ipfs/") : uri;
+        const res = await fetch(httpUri, { signal: AbortSignal.timeout(8000) });
+        const json = await res.json() as { image?: string };
+        if (json.image) {
+          const imgUrl = json.image.startsWith("ipfs://") ? json.image.replace("ipfs://", "https://ipfs.io/ipfs/") : json.image;
+          setStageImages(prev => ({ ...prev, [stage]: imgUrl }));
+        }
+      } catch { /* ignore */ }
+    };
+    cat.stageURIs.forEach((uri, idx) => { if (uri) fetchStageImg(uri, idx + 1); });
+  }, [cat]);
 
   // 读取申请状态
   const loadAppInfo = useCallback(async () => {
@@ -236,22 +267,43 @@ export function CatDetail() {
     () => getContracts(signer!).adoptionVault.forceWithdraw(catId) as Promise<ethers.ContractTransactionResponse>
   );
 
-  const handleDonate = () => tx(
-    isZh ? `感谢您的爱心！已捐赠 ${donateAmount} AVAX` : `Donated ${donateAmount} AVAX!`,
-    () => getContracts(signer!).donationVault.donate(catId, { value: ethers.parseEther(donateAmount) }) as Promise<ethers.ContractTransactionResponse>
-  ).then(ok => {
-    if (ok) {
-      const c2 = getReadonlyContracts();
-      Promise.all([
-        c2.donationVault.userCatDonation(walletAddress!, catId),
-        c2.donationVault.remainingToNextStage(walletAddress!, catId),
-      ]).then(([t, r]) => {
+  const handleDonate = () => {
+    // 捐款前记录当前阶段
+    const prevStagePromise = walletAddress
+      ? getReadonlyContracts().donationVault.donationStage(walletAddress, catId).catch(() => 0n)
+      : Promise.resolve(0n);
+
+    return tx(
+      isZh ? `感谢您的爱心！已捐赠 ${donateAmount} AVAX` : `Donated ${donateAmount} AVAX!`,
+      () => getContracts(signer!).donationVault.donate(catId, { value: ethers.parseEther(donateAmount) }) as Promise<ethers.ContractTransactionResponse>
+    ).then(async (ok) => {
+      if (ok) {
+        const c2 = getReadonlyContracts();
+        const [t, r, prevStage, newStage] = await Promise.all([
+          c2.donationVault.userCatDonation(walletAddress!, catId),
+          c2.donationVault.remainingToNextStage(walletAddress!, catId),
+          prevStagePromise,
+          c2.donationVault.donationStage(walletAddress!, catId),
+        ]);
         setDonationTotal(parseFloat(ethers.formatEther(t as bigint)).toFixed(3));
         setRemainingToNext(parseFloat(ethers.formatEther(r as bigint)).toFixed(3));
-      });
-      setTimeout(() => { setShowDonateModal(false); setTxSuccess(null); }, 2000);
-    }
-  });
+
+        // 判断是否获得了新NFT
+        const prev = Number(prevStage);
+        const next = Number(newStage);
+        if (next > prev) {
+          if (next >= 3) {
+            // 已满级
+            setDonateNFTNotice(isZh ? "💝 感谢您长期的爱心支持！" : "💝 Thank you for your continued support!");
+          } else {
+            setDonateNFTNotice(isZh ? `🎉 您已获得新的 NFT（Stage ${next}），可在「我的 NFT」中查看！` : `🎉 You got a new NFT (Stage ${next})! Check "My NFTs".`);
+          }
+          setTimeout(() => setDonateNFTNotice(null), 6000);
+        }
+        setTimeout(() => { setShowDonateModal(false); setTxSuccess(null); }, 2000);
+      }
+    });
+  };
 
   const handleGameEnter = async () => {
     if (!starterCatClaimed) await claimStarterCat(catId);
@@ -411,7 +463,11 @@ export function CatDetail() {
           {/* ── 左栏：图片 ── */}
           <div>
             <div className="relative rounded-2xl overflow-hidden" style={{ aspectRatio: "1" }}>
-              <img src={cat.image} alt={cat.name} className="w-full h-full object-cover" />
+              <img
+                src={selectedStage ? (stageImages[selectedStage] || cat.image) : cat.image}
+                alt={cat.name} className="w-full h-full object-cover"
+                style={{ transition: "opacity 0.3s" }}
+              />
               <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(146,64,14,0.6), transparent 60%)" }} />
               <div className="absolute bottom-4 left-4 right-4 flex items-center gap-2">
                 <span className="px-3 py-1 rounded-full text-xs font-semibold"
@@ -426,19 +482,38 @@ export function CatDetail() {
               </div>
             </div>
 
-            {/* 成长阶段 */}
+            {/* 成长阶段 — 可点击切换图片 */}
             <div className="mt-4 p-4 rounded-2xl" style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.1)" }}>
-              <p className="text-sm mb-3 font-semibold" style={{ color: "#F97316" }}>{isZh ? "成长阶段 NFT" : "Growth Stage NFT"}</p>
+              <p className="text-sm mb-3 font-semibold" style={{ color: "#F97316" }}>{isZh ? "点击阶段查看对应照片" : "Click stage to view photo"}</p>
               <div className="flex gap-2">
-                {[{ n: 1, zh: "幼", en: "Kit" }, { n: 2, zh: "少", en: "Jun" }, { n: 3, zh: "成", en: "Adu" }, { n: 4, zh: "✨", en: "✨" }].map(({ n, zh, en }) => (
-                  <div key={n} className="flex-1 py-2 px-1 rounded-xl text-center text-xs font-bold"
-                    style={{
-                      background: n <= cat.stage ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.04)",
-                      border: n <= cat.stage ? "1px solid rgba(249,115,22,0.35)" : "1px solid rgba(249,115,22,0.1)",
-                      color: n <= cat.stage ? "#F97316" : "#d4a57a",
-                    }}>{isZh ? zh : en}</div>
-                ))}
+                {[{ n: 1, zh: "幼猫", en: "Kitten" }, { n: 2, zh: "少年", en: "Junior" }, { n: 3, zh: "成年", en: "Adult" }, { n: 4, zh: "✨Genesis", en: "✨Genesis" }].map(({ n, zh, en }) => {
+                  const hasUri = cat.stageURIs[n - 1] && cat.stageURIs[n - 1] !== "";
+                  const isSelected = selectedStage === n;
+                  const isUnlocked = n <= cat.stage;
+                  return (
+                    <button key={n}
+                      onClick={() => {
+                        if (!hasUri) return;
+                        setSelectedStage(isSelected ? null : n);
+                      }}
+                      className="flex-1 py-2 px-1 rounded-xl text-center text-xs font-bold transition-all"
+                      style={{
+                        background: isSelected ? "rgba(249,115,22,0.3)" : isUnlocked ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.04)",
+                        border: isSelected ? "2px solid rgba(249,115,22,0.7)" : isUnlocked ? "1px solid rgba(249,115,22,0.35)" : "1px solid rgba(249,115,22,0.1)",
+                        color: isUnlocked ? "#F97316" : "#d4a57a",
+                        cursor: hasUri ? "pointer" : "default",
+                        transform: isSelected ? "scale(1.05)" : "scale(1)",
+                      }}>
+                      {isZh ? zh : en}
+                    </button>
+                  );
+                })}
               </div>
+              {selectedStage && !stageImages[selectedStage] && cat.stageURIs[selectedStage - 1] && (
+                <p className="text-xs mt-2 text-center" style={{ color: "#b45309" }}>
+                  {isZh ? "图片加载中…" : "Loading image…"}
+                </p>
+              )}
             </div>
 
             {/* 链上信息 */}
@@ -476,9 +551,28 @@ export function CatDetail() {
               </span>
             </div>
 
+            {/* 机构地点 */}
+            {cat.shelterLocation && (
+              <div className="flex items-center gap-2 text-sm -mt-3" style={{ color: "#b45309" }}>
+                <MapPin size={13} style={{ color: "#F97316", opacity: 0.6 }} />
+                <span>{isZh ? "地点：" : "Location: "}<span style={{ color: "#92400e" }}>{cat.shelterLocation}</span></span>
+              </div>
+            )}
+
             <div className="p-5 rounded-2xl" style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.1)" }}>
               <p className="text-sm leading-relaxed" style={{ color: "#78350f" }}>{cat.description}</p>
             </div>
+
+            {/* 捐款后NFT提示 */}
+            <AnimatePresence>
+              {donateNFTNotice && (
+                <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  className="px-4 py-3 rounded-2xl text-sm font-semibold flex items-center gap-2"
+                  style={{ background: "rgba(22,163,74,0.1)", border: "1px solid rgba(22,163,74,0.25)", color: "#16a34a" }}>
+                  <CheckCircle size={15} />{donateNFTNotice}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* 捐款进度 */}
             {walletAddress && canDonate && (

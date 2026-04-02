@@ -1,14 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, Zap, ShoppingBag, Package, ChevronRight, X, Clock, Trophy, Sparkles, Coins, Loader2 } from "lucide-react";
+import { ArrowLeft, Zap, Package, ChevronRight, X, Clock, Trophy, Sparkles, Loader2, Plus, Sword, ShoppingBag as BagIcon, Wind } from "lucide-react";
 import { Navbar } from "../components/Navbar";
 import { useApp } from "../context/AppContext";
-import { getReadonlyContracts } from "../../lib/contracts";
+import { getReadonlyContracts, getContracts } from "../../lib/contracts";
+import { ethers } from "ethers";
 
 type HuntDuration = "short" | "medium" | "long";
 type HuntItem = "none" | "food" | "can";
-type CatState = "idle" | "hunting" | "returning" | "sleeping";
+type CatState = "idle" | "hunting" | "returning";
 
 interface HuntState {
   active: boolean;
@@ -20,163 +21,168 @@ interface HuntState {
 }
 
 interface Reward {
-  type: string;
+  type: "collection";
   name: string;
   rarity: string;
   icon: string;
 }
 
-const HUNT_DURATIONS: Record<HuntDuration, { label: string; ms: number; stamina: number; fragments: number }> = {
-  short:  { label: "短途 (2h)", ms: 30 * 1000,  stamina: 1, fragments: 2  },
-  medium: { label: "中途 (4h)", ms: 60 * 1000,  stamina: 2, fragments: 5  },
-  long:   { label: "长途 (8h)", ms: 120 * 1000, stamina: 3, fragments: 15 },
+interface EquipmentItem {
+  tokenId: number;
+  slot: number;
+  rarity: number;
+  name: string;
+  lore: string;
+  rarityBonus: number;
+  carryBonus: number;
+  speedBonus: number;
+}
+
+interface CollectionNFT {
+  tokenId: number;
+  name: string;
+  image: string;
+  description: string;
+  seriesId: number;
+}
+
+const RARITY_LABELS = ["普通", "精良", "稀有", "传说"];
+const RARITY_COLORS = ["#9CA3AF", "#34D399", "#60A5FA", "#FBBF24"];
+const SLOT_ICONS = ["⚔️", "🎒", "👟"];
+const SLOT_LABELS = ["武器", "背包", "靴子"];
+
+const HUNT_CONFIG: Record<HuntDuration, { labelZh: string; labelEn: string; ms: number; stamina: number; fragments: [number, number] }> = {
+  short:  { labelZh: "短途 2h", labelEn: "Short 2h",  ms: 30_000,  stamina: 1, fragments: [1, 3]  },
+  medium: { labelZh: "中途 4h", labelEn: "Mid 4h",    ms: 60_000,  stamina: 2, fragments: [3, 8]  },
+  long:   { labelZh: "长途 8h", labelEn: "Long 8h",   ms: 120_000, stamina: 3, fragments: [10, 20] },
 };
 
-const ITEMS: Record<HuntItem, { label: string; icon: string; cost: number; desc: string }> = {
-  none: { label: "不携带",   icon: "🚫", cost: 0,  desc: "无道具" },
-  food: { label: "猫粮 🐟", icon: "🐟", cost: 5,  desc: "普通 80% / 稀有 15% / 珍稀 5%" },
-  can:  { label: "罐罐 🥫", icon: "🥫", cost: 15, desc: "普通 50% / 稀有 35% / 珍稀 15%" },
+const ITEM_CONFIG: Record<HuntItem, { labelZh: string; labelEn: string; icon: string; descZh: string; descEn: string; costPurr: number }> = {
+  none: { labelZh: "不携带", labelEn: "None",     icon: "🚫", descZh: "无 NFT 掉落",             descEn: "No NFT drop",              costPurr: 0  },
+  food: { labelZh: "猫粮",   labelEn: "Cat Food", icon: "🐟", descZh: "普通80% / 稀有15% / 珍稀5%", descEn: "80% Cmn/15% Rare/5% Epic",  costPurr: 5  },
+  can:  { labelZh: "罐罐",   labelEn: "Cat Can",  icon: "🥫", descZh: "普通50% / 稀有35% / 珍稀15%", descEn: "50% Cmn/35% Rare/15% Epic", costPurr: 15 },
 };
 
-const COLLECTION_NFTS: Reward[] = [
-  { type: "collection", name: "小猫玩耍", rarity: "普通", icon: "🐱" },
-  { type: "collection", name: "小猫同伴", rarity: "稀有", icon: "😺" },
-  { type: "collection", name: "小猫睡觉", rarity: "珍稀", icon: "😸" },
-  { type: "equipment",  name: "猫爪武器", rarity: "精良", icon: "⚔️" },
-  { type: "equipment",  name: "探险背包", rarity: "普通", icon: "🎒" },
-  { type: "equipment",  name: "疾风靴",   rarity: "稀有", icon: "👟" },
-];
-
+// ── 可爱小猫 SVG ──────────────────────────────────────────
 function CatSVG({ state }: { state: CatState }) {
-  const eyeOpen = state !== "sleeping";
   return (
-    <svg viewBox="0 0 120 130" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-      <motion.path
-        d="M85 110 Q110 90 105 70 Q100 50 90 60"
-        stroke="#C4A882" strokeWidth="8" strokeLinecap="round" fill="none"
-        animate={state === "idle" || state === "sleeping" ? { d: ["M85 110 Q110 90 105 70 Q100 50 90 60","M85 110 Q115 95 108 72 Q98 48 88 58","M85 110 Q110 90 105 70 Q100 50 90 60"] } : {}}
-        transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
-      />
-      <motion.ellipse cx="60" cy="95" rx="35" ry="28" fill="#E8C99A"
-        animate={state === "idle" ? { ry: [28, 30, 28] } : {}}
-        transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut" }} />
-      <ellipse cx="60" cy="100" rx="20" ry="16" fill="#F5DEB3" />
-      <circle cx="60" cy="58" r="28" fill="#E8C99A" />
-      <polygon points="35,38 28,16 50,32" fill="#E8C99A" />
-      <polygon points="85,38 92,16 70,32" fill="#E8C99A" />
-      <polygon points="37,36 32,22 48,33" fill="#F4A0A0" />
-      <polygon points="83,36 88,22 72,33" fill="#F4A0A0" />
-      {eyeOpen ? (
+    <svg viewBox="0 0 120 130" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full drop-shadow-md">
+      <motion.path d="M85 110 Q112 88 106 68 Q100 48 88 58"
+        stroke="#E8956D" strokeWidth="8" strokeLinecap="round" fill="none"
+        animate={state === "idle" ? { d: ["M85 110 Q112 88 106 68 Q100 48 88 58","M85 110 Q118 92 110 70 Q100 46 86 56","M85 110 Q112 88 106 68 Q100 48 88 58"] } : {}}
+        transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }} />
+      <motion.ellipse cx="60" cy="95" rx="34" ry="27" fill="#FDDBA8"
+        animate={state === "idle" ? { ry: [27, 29, 27] } : {}}
+        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }} />
+      <ellipse cx="60" cy="100" rx="19" ry="15" fill="#FFF0D0" />
+      <circle cx="60" cy="57" r="27" fill="#FDDBA8" />
+      <polygon points="35,38 28,14 50,31" fill="#FDDBA8" />
+      <polygon points="85,38 92,14 70,31" fill="#FDDBA8" />
+      <polygon points="37,36 32,20 49,32" fill="#F4A0A0" />
+      <polygon points="83,36 88,20 71,32" fill="#F4A0A0" />
+      {state !== "hunting" ? (
         <>
-          <motion.ellipse cx="48" cy="55" rx="7" ry="8" fill="#1A1A2E"
-            animate={{ ry: [8, 2, 8] }} transition={{ repeat: Infinity, duration: 4, times: [0, 0.05, 0.1], ease: "easeInOut" }} />
-          <motion.ellipse cx="72" cy="55" rx="7" ry="8" fill="#1A1A2E"
-            animate={{ ry: [8, 2, 8] }} transition={{ repeat: Infinity, duration: 4, times: [0, 0.05, 0.1], ease: "easeInOut" }} />
-          <circle cx="51" cy="52" r="2" fill="white" />
-          <circle cx="75" cy="52" r="2" fill="white" />
+          <motion.ellipse cx="47" cy="54" rx="6.5" ry="7.5" fill="#3D2B1F"
+            animate={{ ry: [7.5, 1.5, 7.5] }} transition={{ repeat: Infinity, duration: 4, times: [0, 0.05, 0.1], ease: "easeInOut" }} />
+          <motion.ellipse cx="73" cy="54" rx="6.5" ry="7.5" fill="#3D2B1F"
+            animate={{ ry: [7.5, 1.5, 7.5] }} transition={{ repeat: Infinity, duration: 4, times: [0, 0.05, 0.1], ease: "easeInOut" }} />
+          <circle cx="50" cy="51" r="2" fill="white" />
+          <circle cx="76" cy="51" r="2" fill="white" />
         </>
       ) : (
         <>
-          <path d="M41 55 Q48 60 55 55" stroke="#1A1A2E" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-          <path d="M65 55 Q72 60 79 55" stroke="#1A1A2E" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+          <ellipse cx="47" cy="54" rx="6.5" ry="4" fill="#3D2B1F" />
+          <ellipse cx="73" cy="54" rx="6.5" ry="4" fill="#3D2B1F" />
         </>
       )}
-      <polygon points="60,64 56,70 64,70" fill="#F4A0A0" />
-      <path d="M56 70 Q60 74 64 70" stroke="#C4A882" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-      <line x1="20" y1="62" x2="50" y2="65" stroke="#C4A882" strokeWidth="1.2" strokeLinecap="round" />
-      <line x1="20" y1="68" x2="50" y2="68" stroke="#C4A882" strokeWidth="1.2" strokeLinecap="round" />
-      <line x1="70" y1="65" x2="100" y2="62" stroke="#C4A882" strokeWidth="1.2" strokeLinecap="round" />
-      <line x1="70" y1="68" x2="100" y2="68" stroke="#C4A882" strokeWidth="1.2" strokeLinecap="round" />
-      <ellipse cx="38" cy="118" rx="12" ry="7" fill="#E8C99A" />
-      <ellipse cx="82" cy="118" rx="12" ry="7" fill="#E8C99A" />
-      {state === "sleeping" && (
-        <g>
-          <text x="92" y="30" fill="#A78BFA" fontSize="14" fontWeight="bold">z</text>
-          <text x="100" y="20" fill="#A78BFA" fontSize="10" fontWeight="bold">z</text>
-          <text x="106" y="12" fill="#A78BFA" fontSize="7" fontWeight="bold">z</text>
-        </g>
-      )}
+      <polygon points="60,63 56,69 64,69" fill="#F4A0A0" />
+      <path d="M56 69 Q60 73 64 69" stroke="#E8956D" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      <line x1="18" y1="61" x2="50" y2="64" stroke="#E8956D" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="18" y1="67" x2="50" y2="67" stroke="#E8956D" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="70" y1="64" x2="102" y2="61" stroke="#E8956D" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="70" y1="67" x2="102" y2="67" stroke="#E8956D" strokeWidth="1.2" strokeLinecap="round" />
+      <ellipse cx="38" cy="118" rx="11" ry="6.5" fill="#FDDBA8" />
+      <ellipse cx="82" cy="118" rx="11" ry="6.5" fill="#FDDBA8" />
     </svg>
   );
 }
 
-function RoomScene({ catState, catName }: { catState: CatState; catName: string }) {
+// ── 温暖小屋场景 ──────────────────────────────────────────
+function CozyRoom({ catState, catName, isZh }: { catState: CatState; catName: string; isZh: boolean }) {
   return (
     <div className="relative w-full h-full overflow-hidden rounded-2xl select-none"
-      style={{ background: "linear-gradient(180deg, #1a1035 0%, #2d1b5e 40%, #1a0d30 100%)" }}>
-      <div className="absolute top-4 left-6 w-28 h-20 rounded-lg overflow-hidden"
-        style={{ border: "3px solid #4a3060", background: "linear-gradient(180deg, #1e3a5f 0%, #2d5a8e 50%, #1e3a5f 100%)" }}>
-        {[{ x: 20, y: 15 }, { x: 60, y: 8 }, { x: 90, y: 25 }, { x: 40, y: 35 }, { x: 75, y: 40 }].map((s, i) => (
-          <div key={i} className="absolute w-1 h-1 rounded-full animate-pulse bg-white"
-            style={{ left: s.x, top: s.y, animationDelay: `${i * 0.4}s`, opacity: 0.8 }} />
+      style={{ background: "linear-gradient(180deg, #FFF5E6 0%, #FDECD2 60%, #F9D5A7 100%)" }}>
+      {/* 窗户 */}
+      <div className="absolute top-5 left-5 w-28 h-20 rounded-xl overflow-hidden"
+        style={{ border: "3px solid #E8B87A", background: "linear-gradient(180deg, #B8D8F0 0%, #E8F4FF 60%, #C8E8C0 100%)" }}>
+        <div className="absolute top-3 left-5 w-5 h-5 rounded-full" style={{ background: "#FFFACD", boxShadow: "0 0 12px #FFD700", opacity: 0.9 }} />
+        {[{ x: 15, y: 4 }, { x: 55, y: 7 }, { x: 82, y: 3 }, { x: 38, y: 13 }].map((s, i) => (
+          <div key={i} className="absolute w-1 h-1 rounded-full" style={{ left: s.x, top: s.y, background: "white", opacity: 0.7 }} />
         ))}
-        <div className="absolute right-3 top-2 w-6 h-6 rounded-full"
-          style={{ background: "#FFF5CC", boxShadow: "0 0 10px rgba(255,245,204,0.5)" }} />
-        <div className="absolute inset-0 border-2 border-[#4a3060]" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-full h-[2px]" style={{ background: "#4a3060" }} />
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="h-full w-[2px]" style={{ background: "#4a3060" }} />
-        </div>
+        <div className="absolute inset-0" style={{ borderRight: "2px solid rgba(232,184,122,0.5)", left: "50%" }} />
+        <div className="absolute inset-0" style={{ borderBottom: "2px solid rgba(232,184,122,0.5)", top: "50%" }} />
       </div>
-      <div className="absolute top-4 right-4 w-24 h-24"
-        style={{ background: "#3d2455", borderRadius: "4px", border: "2px solid #4a2d6a" }}>
-        <div className="flex items-end h-full p-1 gap-0.5">
-          {[{ h: "70%", color: "#7C3AED" }, { h: "85%", color: "#06B6D4" }, { h: "60%", color: "#F59E0B" }, { h: "90%", color: "#EC4899" }, { h: "75%", color: "#10B981" }]
-            .map((b, i) => <div key={i} className="flex-1 rounded-sm" style={{ height: b.h, background: b.color, opacity: 0.8 }} />)}
-        </div>
-        <div className="absolute bottom-0 left-0 right-0 h-2 rounded-b" style={{ background: "#5a3070" }} />
-        <div className="absolute -top-3 right-2 text-xs">🐾</div>
+      {/* 书架 */}
+      <div className="absolute top-4 right-4 w-20 rounded-lg p-1.5" style={{ background: "#D4956A", border: "2px solid #B8774A", minHeight: "56px" }}>
+        {[["#FF8FAB","#FFB347","#87CEEB"], ["#98D17A","#DDA0DD","#F0E68C"]].map((row, ri) => (
+          <div key={ri} className="flex items-end gap-0.5 mb-0.5">
+            {row.map((c, ci) => <div key={ci} className="rounded-sm" style={{ width: 5, height: 14 + ci * 2, background: c }} />)}
+          </div>
+        ))}
+        <div className="absolute -top-2 right-1 text-sm">🐾</div>
       </div>
-      <div className="absolute top-8 left-40 text-lg opacity-60">🌙</div>
-      <div className="absolute top-6 right-32 text-sm opacity-40">⭐</div>
-      <div className="absolute bottom-0 left-0 right-0 h-24 rounded-b-2xl"
-        style={{ background: "linear-gradient(180deg, #3d2455 0%, #2d1b3e 100%)" }}>
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="absolute top-0 bottom-0"
-            style={{ left: `${i * 12.5}%`, width: "1px", background: "rgba(109,58,238,0.04)" }} />
+      {/* 地板 */}
+      <div className="absolute bottom-0 left-0 right-0 h-20 rounded-b-2xl"
+        style={{ background: "linear-gradient(180deg, #F5C87A 0%, #E8A84A 100%)" }}>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="absolute top-0 bottom-0" style={{ left: `${i * 17}%`, width: 1, background: "rgba(200,120,40,0.12)" }} />
         ))}
       </div>
-      <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-36 h-10 rounded-full"
-        style={{ background: "linear-gradient(135deg, #7C3AED40, #5b21b640)", border: "2px solid rgba(167,139,250,0.3)", boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
-        <div className="absolute inset-x-2 top-1 bottom-2 rounded-full" style={{ background: "rgba(167,139,250,0.1)" }} />
-      </div>
-      <motion.div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-28 h-32"
+      {/* 猫垫 */}
+      <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-36 h-10 rounded-full"
+        style={{ background: "linear-gradient(135deg, #FFBCBC, #FFD6A5)", border: "2px solid rgba(255,150,100,0.3)" }} />
+      {/* 猫咪 */}
+      <motion.div className="absolute bottom-14 left-1/2 -translate-x-1/2 w-28 h-32"
         animate={
-          catState === "hunting"   ? { x: [0, -60, -300], opacity: [1, 1, 0] } :
-          catState === "returning" ? { x: [300, 60, 0], opacity: [0, 1, 1] } :
-          catState === "idle"      ? { y: [0, -5, 0] } : { y: 0 }
+          catState === "hunting"   ? { x: [0, -80, -400], opacity: [1, 1, 0] } :
+          catState === "returning" ? { x: [400, 80, 0], opacity: [0, 1, 1] } :
+          { y: [0, -6, 0] }
         }
         transition={
           catState === "hunting" || catState === "returning" ? { duration: 1.5, ease: "easeInOut" } :
-          catState === "idle" ? { repeat: Infinity, duration: 2.5, ease: "easeInOut" } : {}
+          { repeat: Infinity, duration: 2.5, ease: "easeInOut" }
         }>
         <CatSVG state={catState} />
       </motion.div>
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full text-xs"
-        style={{ background: "rgba(0,0,0,0.4)", color: "#4c4980", fontFamily: "'Space Grotesk', sans-serif" }}>
-        {catState === "hunting" ? "🏃 外出探险中" : catState === "returning" ? "🎉 回来了！" : catState === "sleeping" ? "😴 休息中" : `💤 ${catName}`}
+      {/* 名牌 */}
+      <div className="absolute bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 rounded-full text-xs font-semibold"
+        style={{ background: "rgba(255,255,255,0.8)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.2)" }}>
+        {catState === "hunting"   ? (isZh ? "🏃 外出探险中" : "🏃 Exploring…") :
+         catState === "returning" ? (isZh ? "🎉 回来了！" : "🎉 Back!") :
+         `🐱 ${catName}`}
       </div>
       {catState === "hunting" && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="text-center">
-            <div className="text-5xl mb-3">🌲</div>
-            <p className="text-sm" style={{ color: "#4c4980", fontFamily: "'Nunito', sans-serif" }}>正在外出探险...</p>
-          </motion.div>
-        </div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="text-center">
+            <div className="text-5xl mb-2">🌸</div>
+            <p className="text-sm font-semibold" style={{ color: "#c2410c" }}>{isZh ? "正在外出探险…" : "Out exploring…"}</p>
+          </div>
+        </motion.div>
       )}
     </div>
   );
 }
 
+// ── 主组件 ────────────────────────────────────────────────
 export function Game() {
   const { catId } = useParams();
   const navigate  = useNavigate();
-  const { purrBalance } = useApp();
+  const { signer, walletAddress, refreshBalance, lang } = useApp();
+  const isZh = lang === "zh";
 
-  // ── 链上猫咪数据 ─────────────────────────────────────────
-  const [cat, setCat]           = useState<{ id: number; name: string; image: string; stage: number } | null>(null);
+  // ── 猫咪数据 ──
+  const [cat, setCat]             = useState<{ id: number; name: string; image: string; stage: number } | null>(null);
   const [catLoading, setCatLoading] = useState(true);
   const [catError,   setCatError]   = useState<string | null>(null);
 
@@ -186,11 +192,9 @@ export function Game() {
       setCatLoading(true); setCatError(null);
       try {
         const c = getReadonlyContracts();
-        const raw = await c.catRegistry.getCat(Number(catId)) as {
-          name: string; stageURIs: string[]; shelter: string; status: number;
-        };
+        const raw = await c.catRegistry.getCat(Number(catId)) as { name: string; stageURIs: string[]; shelter: string };
         if (!raw.shelter || raw.shelter === "0x0000000000000000000000000000000000000000") {
-          setCatError("找不到该猫咪"); return;
+          setCatError(isZh ? "找不到该猫咪" : "Cat not found"); return;
         }
         const uris  = Array.from(raw.stageURIs) as string[];
         const stage = uris.reduce((last, uri, idx) => uri && uri !== "" ? idx + 1 : last, 1);
@@ -199,417 +203,772 @@ export function Game() {
         if (firstUri) {
           try {
             const httpUri = firstUri.startsWith("ipfs://") ? firstUri.replace("ipfs://", "https://ipfs.io/ipfs/") : firstUri;
-            const res  = await fetch(httpUri, { signal: AbortSignal.timeout(5000) });
+            const res = await fetch(httpUri, { signal: AbortSignal.timeout(5000) });
             const json = await res.json() as { image?: string };
             if (json.image) image = json.image.startsWith("ipfs://") ? json.image.replace("ipfs://", "https://ipfs.io/ipfs/") : json.image;
           } catch { /* fallback */ }
         }
         setCat({ id: Number(catId), name: raw.name, image, stage });
-      } catch {
-        setCatError("读取猫咪数据失败");
-      } finally { setCatLoading(false); }
+      } catch { setCatError(isZh ? "读取猫咪数据失败" : "Failed to load cat"); }
+      finally { setCatLoading(false); }
     };
     load();
-  }, [catId]);
+  }, [catId, isZh]);
 
-  // ── 游戏状态 ─────────────────────────────────────────────
-  const [catState, setCatState]   = useState<CatState>("idle");
-  const [stamina,  setStamina]    = useState(() => parseInt(localStorage.getItem(`stamina_${catId}`) || "5"));
-  const [fragments, setFragments] = useState(0);
-  const [purr, setPurr]           = useState(() => {
-    const saved = localStorage.getItem(`purr_${catId}`);
-    return saved !== null ? saved : purrBalance;
-  });
-  const [staminaRestore, setStaminaRestore] = useState<number>(() => parseInt(localStorage.getItem(`stamina_restore_${catId}`) || "0"));
-  const [showShop, setShowShop]   = useState(false);
-  const [showHuntModal, setShowHuntModal] = useState(false);
-  const [huntConfig, setHuntConfig] = useState<{ duration: HuntDuration; item: HuntItem; booster: boolean }>({
-    duration: "short", item: "none", booster: false,
-  });
-  const [hunt, setHunt]           = useState<HuntState | null>(null);
-  const [timeLeft, setTimeLeft]   = useState(0);
-  const [rewards, setRewards]     = useState<Reward[]>([]);
-  const [showRewards, setShowRewards] = useState(false);
-  const [inventory, setInventory] = useState<{ fragments: number; items: string[] }>({ fragments: 0, items: [] });
-  const [foodCount,    setFoodCount]    = useState(() => parseInt(localStorage.getItem(`food_${catId}`) || "0"));
-  const [canCount,     setCanCount]     = useState(() => parseInt(localStorage.getItem(`can_${catId}`) || "0"));
-  const [boosterCount, setBoosterCount] = useState(() => parseInt(localStorage.getItem(`booster_${catId}`) || "0"));
-  const [toast, setToast] = useState<string | null>(null);
+  // ── 链上数据：体力、道具、碎片 ──
+  const [stamina,      setStamina]      = useState(5);
+  const [foodCount,    setFoodCount]    = useState(0);
+  const [canCount,     setCanCount]     = useState(0);
+  const [boosterCount, setBoosterCount] = useState(0);
+  const [fragments,    setFragments]    = useState(0);
+  const [chainLoading, setChainLoading] = useState(false);
+
+  const loadChainData = useCallback(async () => {
+    if (!walletAddress) return;
+    setChainLoading(true);
+    try {
+      const c = getReadonlyContracts();
+      const [st, food, can, boost, mat] = await Promise.all([
+        c.gameContract.staminaOf(walletAddress),
+        c.gameContract.foodBalance(walletAddress),
+        c.gameContract.canBalance(walletAddress),
+        c.gameContract.boosterBalance(walletAddress),
+        c.gameContract.materialBalance(walletAddress),
+      ]);
+      setStamina(Number(st));
+      setFoodCount(Number(food));
+      setCanCount(Number(can));
+      setBoosterCount(Number(boost));
+      setFragments(Number(mat));
+    } catch { /* ignore */ }
+    finally { setChainLoading(false); }
+  }, [walletAddress]);
+
+  useEffect(() => { loadChainData(); }, [loadChainData]);
+
+  // ── 装备 NFT ──
+  const [equipments,    setEquipments]    = useState<EquipmentItem[]>([]);
+  const [equipsLoading, setEquipsLoading] = useState(false);
+  const [selectedEquip, setSelectedEquip] = useState<Record<number, number | null>>({ 0: null, 1: null, 2: null });
+
+  const loadEquipments = useCallback(async () => {
+    if (!walletAddress) return;
+    setEquipsLoading(true);
+    try {
+      const c = getReadonlyContracts();
+      // equipmentNFT 没有 totalSupply，用 ownerOf 扫描前200
+      const found: EquipmentItem[] = [];
+      for (let i = 0; i < 200 && found.length < 50; i++) {
+        try {
+          const owner = await c.equipmentNFT.ownerOf(i);
+          if ((owner as string).toLowerCase() !== walletAddress.toLowerCase()) continue;
+          const eq = await c.equipmentNFT.getEquipment(i);
+          const e = eq as { slot: bigint; rarity: bigint; name: string; lore: string; rarityBonus: bigint; safetyBonus: bigint; carryBonus: bigint; speedBonus: bigint };
+          found.push({ tokenId: i, slot: Number(e.slot), rarity: Number(e.rarity), name: e.name, lore: e.lore, rarityBonus: Number(e.rarityBonus), carryBonus: Number(e.carryBonus), speedBonus: Number(e.speedBonus) });
+        } catch { /* not owned or burned */ }
+      }
+      setEquipments(found);
+    } catch { /* ignore */ }
+    finally { setEquipsLoading(false); }
+  }, [walletAddress]);
+
+  useEffect(() => { loadEquipments(); }, [loadEquipments]);
+
+  // ── 收藏 NFT ──
+  const [collections,    setCollections]    = useState<CollectionNFT[]>([]);
+  const [colsLoading, setColsLoading] = useState(false);
+
+  const loadCollections = useCallback(async () => {
+    if (!walletAddress) return;
+    setColsLoading(true);
+    try {
+      const c = getReadonlyContracts();
+      const total = Number(await c.catNFT.totalSupply());
+      const found: CollectionNFT[] = [];
+      for (let i = total - 1; i >= 0 && found.length < 30; i--) {
+        try {
+          const owner = await c.catNFT.ownerOf(i);
+          if ((owner as string).toLowerCase() !== walletAddress.toLowerCase()) continue;
+          const info = await c.catNFT.nftInfo(i) as { nftType: bigint; seriesId: bigint; tokenURIValue: string };
+          if (Number(info.nftType) !== 5) continue;
+          let name = `Collection #${i}`, image = "", description = "";
+          if (info.tokenURIValue) {
+            try {
+              const url = info.tokenURIValue.startsWith("ipfs://") ? info.tokenURIValue.replace("ipfs://", "https://ipfs.io/ipfs/") : info.tokenURIValue;
+              const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+              const json = await res.json() as { name?: string; image?: string; description?: string };
+              if (json.name) name = json.name;
+              if (json.description) description = json.description;
+              if (json.image) image = json.image.startsWith("ipfs://") ? json.image.replace("ipfs://", "https://ipfs.io/ipfs/") : json.image;
+            } catch { /* fallback */ }
+          }
+          found.push({ tokenId: i, name, image, description, seriesId: Number(info.seriesId) });
+        } catch { /* skip */ }
+      }
+      setCollections(found);
+    } catch { /* ignore */ }
+    finally { setColsLoading(false); }
+  }, [walletAddress]);
+
+  useEffect(() => { loadCollections(); }, [loadCollections]);
+
+  // ── 出猎状态 ──
+  const [catState,        setCatState]        = useState<CatState>("idle");
+  const [hunt,            setHunt]            = useState<HuntState | null>(null);
+  const [timeLeft,        setTimeLeft]        = useState(0);
+  const [rewards,         setRewards]         = useState<Reward[]>([]);
+  const [rewardFragments, setRewardFragments] = useState(0);
+  const [showRewards,     setShowRewards]     = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+  // ── UI 状态 ──
+  const [showHuntModal, setShowHuntModal] = useState(false);
+  const [huntConfig,    setHuntConfig]    = useState<{ duration: HuntDuration; item: HuntItem; booster: boolean }>({ duration: "short", item: "none", booster: false });
+  const [toast,         setToast]         = useState<string | null>(null);
+  const [buyingStamina, setBuyingStamina] = useState(false);
+  const [buyingItem,    setBuyingItem]    = useState<string | null>(null);
+  const [activePanel,   setActivePanel]   = useState<"bag" | "frags" | "tips">("bag");
 
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+
+  // ── 恢复出猎（退出再进）──
   useEffect(() => {
+    if (!catId) return;
     const savedHunt = localStorage.getItem(`hunt_${catId}`);
-    if (savedHunt) {
-      const h: HuntState = JSON.parse(savedHunt);
-      if (h.active) {
-        const elapsed = Date.now() - h.startTime;
-        if (elapsed >= h.duration) {
-          setCatState("returning"); setHunt(null);
-          localStorage.removeItem(`hunt_${catId}`);
-          setTimeout(() => { settleRewards(h.item); setCatState("idle"); }, 2000);
-        } else {
-          setHunt(h); setCatState("hunting"); setTimeLeft(Math.ceil((h.duration - elapsed) / 1000));
-        }
-      }
+    if (!savedHunt) return;
+    const h: HuntState = JSON.parse(savedHunt);
+    if (!h.active) return;
+    const elapsed = Date.now() - h.startTime;
+    if (elapsed >= h.duration) {
+      setCatState("returning");
+      setHunt(null);
+      localStorage.removeItem(`hunt_${catId}`);
+      const savedRewards = localStorage.getItem(`rewards_${catId}`);
+      const savedFrags   = parseInt(localStorage.getItem(`reward_frags_${catId}`) || "0");
+      setTimeout(() => {
+        if (savedRewards) setRewards(JSON.parse(savedRewards));
+        setRewardFragments(savedFrags);
+        setShowRewards(true);
+        setCatState("idle");
+        localStorage.removeItem(`rewards_${catId}`);
+        localStorage.removeItem(`reward_frags_${catId}`);
+      }, 1500);
+    } else {
+      setHunt(h);
+      setCatState("hunting");
+      setTimeLeft(Math.ceil((h.duration - elapsed) / 1000));
     }
   }, [catId]);
 
-  // Persist purr and stamina
-  useEffect(() => { localStorage.setItem(`purr_${catId}`, String(purr)); }, [purr, catId]);
-  useEffect(() => { localStorage.setItem(`stamina_${catId}`, String(stamina)); }, [stamina, catId]);
-  useEffect(() => { localStorage.setItem(`food_${catId}`, String(foodCount)); }, [foodCount, catId]);
-  useEffect(() => { localStorage.setItem(`can_${catId}`, String(canCount)); }, [canCount, catId]);
-  useEffect(() => { localStorage.setItem(`booster_${catId}`, String(boosterCount)); }, [boosterCount, catId]);
-
+  // ── 出猎倒计时 ──
   useEffect(() => {
     if (hunt && catState === "hunting") {
       timerRef.current = setInterval(() => {
         const elapsed   = Date.now() - hunt.startTime;
         const remaining = hunt.duration - elapsed;
         if (remaining <= 0) {
-          clearInterval(timerRef.current!); setHunt(null);
-          localStorage.removeItem(`hunt_${catId}`); setCatState("returning");
-          setTimeout(() => { settleRewards(hunt.item); setCatState("idle"); }, 2000);
+          clearInterval(timerRef.current!);
+          setHunt(null);
+          localStorage.removeItem(`hunt_${catId}`);
+          setCatState("returning");
+
+          const cfg = HUNT_CONFIG[hunt.durationLabel];
+          const fragCount = Math.floor(Math.random() * (cfg.fragments[1] - cfg.fragments[0] + 1)) + cfg.fragments[0];
+          const newRewards: Reward[] = [];
+          if (hunt.item !== "none") {
+            const roll = Math.random();
+            let rarity = "普通";
+            if (hunt.item === "can") { if (roll < 0.15) rarity = "珍稀"; else if (roll < 0.5) rarity = "稀有"; }
+            else { if (roll < 0.05) rarity = "珍稀"; else if (roll < 0.2) rarity = "稀有"; }
+            const options: Reward[] = [
+              { type: "collection", name: isZh ? "小猫玩耍" : "Cat Playing",   rarity: "普通", icon: "🐱" },
+              { type: "collection", name: isZh ? "小猫同伴" : "Cat Companion",  rarity: "稀有", icon: "😺" },
+              { type: "collection", name: isZh ? "小猫睡觉" : "Cat Sleeping",   rarity: "珍稀", icon: "😸" },
+            ].filter(n => n.rarity === rarity);
+            if (options.length) newRewards.push(options[Math.floor(Math.random() * options.length)]);
+          }
+          localStorage.setItem(`rewards_${catId}`, JSON.stringify(newRewards));
+          localStorage.setItem(`reward_frags_${catId}`, String(fragCount));
+          setTimeout(() => {
+            setRewards(newRewards);
+            setRewardFragments(fragCount);
+            setShowRewards(true);
+            setCatState("idle");
+            loadChainData();
+            loadCollections();
+            refreshBalance();
+            localStorage.removeItem(`rewards_${catId}`);
+            localStorage.removeItem(`reward_frags_${catId}`);
+          }, 1500);
         } else { setTimeLeft(Math.ceil(remaining / 1000)); }
       }, 500);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [hunt, catState]);
+  }, [hunt, catState, catId, isZh, loadChainData, loadCollections, refreshBalance]);
 
-  const settleRewards = (item: HuntItem) => {
-    const newRewards: Reward[] = [];
-    const fragmentCount = Math.floor(Math.random() * 5) + 2;
-    setFragments(f => f + fragmentCount);
-    setInventory(inv => ({ ...inv, fragments: inv.fragments + fragmentCount }));
-    if (item !== "none") {
-      const roll = Math.random();
-      let rarity = "普通";
-      if (item === "can")  { if (roll < 0.15) rarity = "珍稀"; else if (roll < 0.5) rarity = "稀有"; }
-      else                 { if (roll < 0.05) rarity = "珍稀"; else if (roll < 0.2) rarity = "稀有"; }
-      const eligible = COLLECTION_NFTS.filter(n => n.rarity === rarity);
-      if (eligible.length > 0) {
-        const reward = eligible[Math.floor(Math.random() * eligible.length)];
-        newRewards.push(reward);
-        setInventory(inv => ({ ...inv, items: [...inv.items, `${reward.icon} ${reward.name}`] }));
-      }
-    }
-    setRewards(newRewards); setShowRewards(true);
+  const formatTime = (s: number) => {
+    if (s <= 0) return "0s";
+    const m = Math.floor(s / 60); const sec = s % 60;
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
   };
 
+  // ── 购买体力（链上）──
+  const handleBuyStamina = async () => {
+    if (!signer || stamina >= 5 || buyingStamina) return;
+    setBuyingStamina(true);
+    try {
+      const c = getContracts(signer);
+      const tx = await c.gameContract.buyStamina(1);
+      await (tx as ethers.ContractTransactionResponse).wait();
+      await loadChainData();
+      refreshBalance();
+      showToast(isZh ? "✅ 体力 +1" : "✅ Stamina +1");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) showToast(isZh ? "❌ 购买失败（PURR 不足？）" : "❌ Failed (not enough PURR?)");
+    } finally { setBuyingStamina(false); }
+  };
+
+  // ── 购买道具（链上）──
+  const handleBuyItem = async (type: "food" | "can" | "booster") => {
+    if (!signer || buyingItem) return;
+    setBuyingItem(type);
+    try {
+      const c = getContracts(signer);
+      let tx;
+      if (type === "food")    tx = await c.gameContract.buyCatFood(1);
+      else if (type === "can") tx = await c.gameContract.buyCatCan(1);
+      else                    tx = await c.gameContract.buyBooster(1);
+      await (tx as ethers.ContractTransactionResponse).wait();
+      await loadChainData();
+      refreshBalance();
+      const names: Record<string, string> = { food: isZh ? "猫粮" : "Cat Food", can: isZh ? "罐罐" : "Cat Can", booster: isZh ? "加速符" : "Booster" };
+      showToast(`✅ ${isZh ? "购买成功：" : "Bought: "}${names[type]}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) showToast(isZh ? "❌ 购买失败（PURR 不足？）" : "❌ Failed (not enough PURR?)");
+    } finally { setBuyingItem(null); }
+  };
+
+  // ── 装备穿戴（链上）──
+  const handleEquip = async (catTokenId: number, equipTokenId: number) => {
+    if (!signer) return;
+    try {
+      const c = getContracts(signer);
+      const tx = await c.gameContract.equipItem(catTokenId, equipTokenId);
+      await (tx as ethers.ContractTransactionResponse).wait();
+      showToast(isZh ? "✅ 装备成功" : "✅ Equipped");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) showToast(isZh ? "❌ 装备失败" : "❌ Equip failed");
+    }
+  };
+
+  // ── 开始出猎 ──
   const startHunt = () => {
-    const dur = HUNT_DURATIONS[huntConfig.duration];
+    const dur = HUNT_CONFIG[huntConfig.duration];
     if (stamina < dur.stamina) return;
+    if (huntConfig.item === "food" && foodCount < 1) { showToast(isZh ? "❌ 没有猫粮" : "❌ No cat food"); return; }
+    if (huntConfig.item === "can"  && canCount  < 1) { showToast(isZh ? "❌ 没有罐罐" : "❌ No cat can"); return; }
+    if (huntConfig.booster && boosterCount < 1) { showToast(isZh ? "❌ 没有加速符" : "❌ No booster"); return; }
+
     let actualMs = dur.ms;
     if (huntConfig.booster) actualMs = Math.max(actualMs * 0.5, dur.ms * 0.1);
-    const itemCost = ITEMS[huntConfig.item].cost;
-    const purrNum = typeof purr === "string" ? parseFloat(purr) : purr;
-    if (huntConfig.booster && purrNum < 10 + itemCost) { showToast("❌ PURR 不足！"); return; }
-    if (!huntConfig.booster && purrNum < itemCost) { showToast("❌ PURR 不足！"); return; }
-    const cost = itemCost + (huntConfig.booster ? 10 : 0);
-    setPurr((p: any) => (parseFloat(String(p)) - cost).toFixed(0)); setStamina(s => s - dur.stamina);
     const newHunt: HuntState = { active: true, startTime: Date.now(), duration: actualMs, durationLabel: huntConfig.duration, item: huntConfig.item, useBooster: huntConfig.booster };
-    setHunt(newHunt); localStorage.setItem(`hunt_${catId}`, JSON.stringify(newHunt));
-    setCatState("hunting"); setTimeLeft(Math.ceil(actualMs / 1000)); setShowHuntModal(false);
+    setHunt(newHunt);
+    localStorage.setItem(`hunt_${catId}`, JSON.stringify(newHunt));
+    setCatState("hunting");
+    setTimeLeft(Math.ceil(actualMs / 1000));
+    setShowHuntModal(false);
+    // 乐观更新（链上下次进来时同步）
+    setStamina(s => Math.max(0, s - dur.stamina));
+    if (huntConfig.item === "food") setFoodCount(c => Math.max(0, c - 1));
+    if (huntConfig.item === "can")  setCanCount(c => Math.max(0, c - 1));
+    if (huntConfig.booster) setBoosterCount(c => Math.max(0, c - 1));
   };
 
-  const formatTime = (s: number) => { if (s <= 0) return "0s"; const m = Math.floor(s / 60); const sec = s % 60; return m > 0 ? `${m}m ${sec}s` : `${sec}s`; };
-  const buyItem = (type: string, cost: number, name: string) => {
-    const purrNum = typeof purr === "string" ? parseFloat(purr) : purr;
-    if (purrNum < cost) { showToast("❌ PURR 不足！"); return; }
-    setPurr((p: any) => (parseFloat(String(p)) - cost).toFixed(0));
-    if (type === "stamina") {
-      setStamina(s => Math.min(5, s + 1));
-      showToast("✅ 体力恢复 +1");
-    } else if (type === "food") {
-      setFoodCount(c => c + 1);
-      setInventory(inv => ({ ...inv, items: [...inv.items, "🐟 猫粮"] }));
-      showToast("✅ 购买猫粮 x1");
-    } else if (type === "can") {
-      setCanCount(c => c + 1);
-      setInventory(inv => ({ ...inv, items: [...inv.items, "🥫 罐罐"] }));
-      showToast("✅ 购买罐罐 x1");
-    } else if (type === "booster") {
-      setBoosterCount(c => c + 1);
-      setInventory(inv => ({ ...inv, items: [...inv.items, "⚡ 加速符"] }));
-      showToast("✅ 购买加速符 x1");
-    }
-  };
-
-  // ── 加载中 / 错误 早退 ───────────────────────────────────
+  // ── Loading / Error ──
   if (catLoading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: "#f7f5ff" }}>
-      <Navbar />
-      <Loader2 size={32} className="animate-spin" style={{ color: "#A78BFA" }} />
+    <div className="min-h-screen flex items-center justify-center" style={{ background: "#fffbf5" }}>
+      <Navbar /><Loader2 size={32} className="animate-spin" style={{ color: "#F97316" }} />
     </div>
   );
-
   if (catError || !cat) return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: "#f7f5ff" }}>
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: "#fffbf5" }}>
       <Navbar />
       <div className="text-5xl">😿</div>
-      <p className="font-bold text-lg" style={{ color: "#92400e" }}>{catError ?? "找不到该猫咪"}</p>
-      <button onClick={() => navigate("/dashboard")}
-        className="px-5 py-2.5 rounded-xl text-white font-bold text-sm"
-        style={{ background: "linear-gradient(135deg, #F97316, #fbbf24)", cursor: "pointer" }}>
-        返回档案馆
+      <p className="font-bold" style={{ color: "#92400e" }}>{catError ?? (isZh ? "找不到该猫咪" : "Cat not found")}</p>
+      <button onClick={() => navigate("/dashboard")} className="px-5 py-2.5 rounded-xl text-white font-bold text-sm"
+        style={{ background: "linear-gradient(135deg,#F97316,#fbbf24)", cursor: "pointer" }}>
+        {isZh ? "返回" : "Back"}
       </button>
     </div>
   );
 
-  // ── 正常渲染 ─────────────────────────────────────────────
+  const dur = HUNT_CONFIG[huntConfig.duration];
+
   return (
-    <div className="min-h-screen" style={{ background: "#f7f5ff", fontFamily: "'Nunito', sans-serif" }}>
+    <div className="min-h-screen" style={{ background: "#fffbf5", fontFamily: "'Nunito', sans-serif" }}>
       <Navbar />
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-20 pb-8">
-        <button onClick={() => navigate(`/cat/${cat.id}`)} className="flex items-center gap-2 mb-4 text-sm" style={{ color: "#7c7aaa" }}>
-          <ArrowLeft size={15} /> 返回 {cat.name} 的档案
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-20 pb-10">
+
+        <button onClick={() => navigate(`/cat/${cat.id}`)} className="flex items-center gap-2 mb-5 text-sm" style={{ color: "#b45309", cursor: "pointer" }}>
+          <ArrowLeft size={15} />{isZh ? `返回 ${cat.name} 的档案` : `Back to ${cat.name}`}
         </button>
 
-        {/* Status Bar */}
+        {/* ── 状态栏 ── */}
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl p-4 mb-4 flex flex-wrap gap-4 items-center justify-between"
-          style={{ background: "rgba(255,255,255,0.95)", border: "1px solid rgba(167,139,250,0.2)" }}>
+          className="rounded-2xl p-4 mb-5 flex flex-wrap gap-4 items-center justify-between"
+          style={{ background: "white", border: "1px solid rgba(249,115,22,0.15)", boxShadow: "0 2px 12px rgba(249,115,22,0.06)" }}>
+          {/* 猫咪信息 */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl overflow-hidden" style={{ border: "2px solid rgba(167,139,250,0.3)" }}>
+            <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0" style={{ border: "2px solid rgba(249,115,22,0.25)" }}>
               <img src={cat.image} alt={cat.name} className="w-full h-full object-cover" />
             </div>
             <div>
-              <div className="text-sm font-bold" style={{ color: "#92400e", fontFamily: "'Space Grotesk', sans-serif" }}>{cat.name}</div>
-              <div className="text-xs" style={{ color: "#A78BFA" }}>Stage {cat.stage}</div>
+              <div className="text-sm font-bold" style={{ color: "#92400e" }}>{cat.name}</div>
+              <div className="text-xs" style={{ color: "#F97316" }}>Stage {cat.stage}</div>
             </div>
           </div>
+
+          {/* 体力 + 购买 */}
           <div className="flex items-center gap-2">
-            <Zap size={14} style={{ color: "#FCD34D" }} />
-            <span className="text-xs" style={{ color: "#7c7aaa" }}>体力</span>
+            <Zap size={14} style={{ color: "#F97316" }} />
+            <span className="text-xs font-medium" style={{ color: "#b45309" }}>{isZh ? "体力" : "SP"}</span>
             <div className="flex gap-1">
               {[1,2,3,4,5].map(i => (
-                <div key={i} className="w-4 h-4 rounded-sm"
-                  style={{ background: i <= stamina ? "#F59E0B" : "rgba(109,58,238,0.08)", boxShadow: i <= stamina ? "0 0 6px rgba(245,158,11,0.4)" : "none" }} />
+                <div key={i} className="w-4 h-4 rounded-sm transition-all"
+                  style={{ background: i <= stamina ? "#F97316" : "rgba(249,115,22,0.1)", boxShadow: i <= stamina ? "0 0 6px rgba(249,115,22,0.3)" : "none" }} />
               ))}
             </div>
-            <span className="text-xs" style={{ color: "#7c7aaa" }}>{stamina}/5</span>
+            <span className="text-xs font-bold" style={{ color: "#F97316" }}>{stamina}/5</span>
+            <button onClick={handleBuyStamina} disabled={stamina >= 5 || buyingStamina || !signer}
+              title={isZh ? "花 8 PURR 购买 1 点体力" : "Buy 1 stamina for 8 PURR"}
+              className="w-6 h-6 rounded-full flex items-center justify-center ml-0.5"
+              style={{
+                background: stamina < 5 && signer ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.05)",
+                border: "1px solid rgba(249,115,22,0.3)",
+                color: stamina < 5 && signer ? "#F97316" : "#d4a57a",
+                cursor: stamina < 5 && signer ? "pointer" : "default",
+              }}>
+              {buyingStamina ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+            </button>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl" style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)" }}>
-            <Coins size={14} style={{ color: "#FCD34D" }} />
-            <span className="text-sm" style={{ color: "#FCD34D", fontFamily: "'Space Grotesk', sans-serif" }}>{purr} PURR</span>
+
+          {/* 碎片 */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
+            style={{ background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.15)" }}>
+            <Sparkles size={13} style={{ color: "#a855f7" }} />
+            <span className="text-sm font-bold" style={{ color: "#a855f7" }}>{fragments}</span>
+            <span className="text-xs" style={{ color: "#b45309" }}>{isZh ? "碎片" : "frags"}</span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl" style={{ background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.2)" }}>
-            <Sparkles size={14} style={{ color: "#A78BFA" }} />
-            <span className="text-sm" style={{ color: "#A78BFA", fontFamily: "'Space Grotesk', sans-serif" }}>{fragments} 碎片</span>
-          </div>
+
+          {chainLoading && <Loader2 size={14} className="animate-spin" style={{ color: "#F97316", opacity: 0.4 }} />}
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Room Scene */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* ── 左：场景 ── */}
           <div className="lg:col-span-2">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative rounded-2xl overflow-hidden" style={{ height: 380 }}>
-              <RoomScene catState={catState} catName={cat.name} />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="relative rounded-2xl overflow-hidden"
+              style={{ height: 360, boxShadow: "0 4px 24px rgba(249,115,22,0.1)" }}>
+              <CozyRoom catState={catState} catName={cat.name} isZh={isZh} />
               {catState === "hunting" && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                   className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full"
-                  style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", border: "1px solid rgba(245,158,11,0.3)" }}>
-                  <Clock size={14} style={{ color: "#FCD34D" }} />
-                  <span className="text-sm" style={{ color: "#FCD34D", fontFamily: "'Space Grotesk', sans-serif" }}>{formatTime(timeLeft)} 后归来</span>
+                  style={{ background: "rgba(255,255,255,0.92)", border: "1px solid rgba(249,115,22,0.3)", boxShadow: "0 2px 12px rgba(249,115,22,0.15)" }}>
+                  <Clock size={14} style={{ color: "#F97316" }} />
+                  <span className="text-sm font-bold" style={{ color: "#c2410c" }}>{formatTime(timeLeft)} {isZh ? "后归来" : "remaining"}</span>
                 </motion.div>
               )}
             </motion.div>
-            <div className="flex gap-3 mt-4">
-              <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                onClick={() => catState === "idle" && setShowHuntModal(true)}
+
+            {/* 出猎按钮 */}
+            <div className="mt-4">
+              <motion.button whileHover={{ scale: catState === "idle" && stamina > 0 ? 1.02 : 1 }} whileTap={{ scale: 0.98 }}
+                onClick={() => catState === "idle" && stamina > 0 && setShowHuntModal(true)}
                 disabled={catState !== "idle" || stamina === 0}
-                className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm"
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-black"
                 style={{
-                  background: catState !== "idle" || stamina === 0 ? "rgba(109,58,238,0.06)" : "linear-gradient(135deg, #7C3AED, #06B6D4)",
-                  color: catState !== "idle" || stamina === 0 ? "rgba(100,100,180,0.5)" : "#fff",
+                  background: catState !== "idle" || stamina === 0 ? "rgba(249,115,22,0.06)" : "linear-gradient(135deg,#F97316,#fbbf24)",
+                  color: catState !== "idle" || stamina === 0 ? "rgba(180,120,50,0.4)" : "white",
                   cursor: catState !== "idle" || stamina === 0 ? "default" : "pointer",
-                  boxShadow: catState !== "idle" || stamina === 0 ? "none" : "0 0 25px rgba(124,58,237,0.4)",
-                  fontFamily: "'Space Grotesk', sans-serif",
+                  boxShadow: catState === "idle" && stamina > 0 ? "0 4px 20px rgba(249,115,22,0.3)" : "none",
+                  border: catState !== "idle" || stamina === 0 ? "1px solid rgba(249,115,22,0.1)" : "none",
                 }}>
-                {catState === "hunting" ? <><Clock size={15} /> 探险中...</> : catState === "returning" ? <><Trophy size={15} /> 归来中...</> : stamina === 0 ? "体力耗尽，等待恢复" : <><ChevronRight size={15} /> 派出探险</>}
-              </motion.button>
-              <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={() => setShowShop(true)}
-                className="flex items-center gap-2 px-5 py-3.5 rounded-2xl text-sm"
-                style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)", color: "#FCD34D", fontFamily: "'Space Grotesk', sans-serif", cursor: "pointer" }}>
-                <ShoppingBag size={15} /> 商店
-              </motion.button>
-              <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                onClick={() => setCatState(catState === "sleeping" ? "idle" : "sleeping")}
-                className="px-4 py-3.5 rounded-2xl text-lg" title="休息"
-                style={{ background: "rgba(109,58,238,0.06)", border: "1px solid rgba(109,58,238,0.08)", cursor: "pointer" }}>
-                {catState === "sleeping" ? "⏰" : "😴"}
+                {catState === "hunting"   ? <><Clock size={16} />{isZh ? "探险中…" : "Exploring…"}</> :
+                 catState === "returning" ? <><Trophy size={16} />{isZh ? "归来中…" : "Returning…"}</> :
+                 stamina === 0            ? (isZh ? "体力耗尽，点体力旁 + 购买" : "No stamina — buy via + button") :
+                 <><ChevronRight size={16} />{isZh ? "派出探险" : "Start Hunt"}</>}
               </motion.button>
             </div>
-          </div>
 
-          {/* Right Panel */}
-          <div className="flex flex-col gap-4">
-            <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #ddd6fe" }}>
+            {/* ── 收藏 NFT ── */}
+            <div className="mt-6">
               <div className="flex items-center gap-2 mb-3">
-                <Package size={14} style={{ color: "#A78BFA" }} />
-                <span className="text-sm font-bold" style={{ color: "#92400e", fontFamily: "'Space Grotesk', sans-serif" }}>背包</span>
+                <Sparkles size={14} style={{ color: "#a855f7" }} />
+                <span className="text-sm font-bold" style={{ color: "#92400e" }}>{isZh ? "收藏系列 NFT" : "Collection NFTs"}</span>
+                {collections.length > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-bold"
+                    style={{ background: "rgba(168,85,247,0.1)", color: "#a855f7", border: "1px solid rgba(168,85,247,0.2)" }}>
+                    {collections.length}
+                  </span>
+                )}
               </div>
-              {inventory.items.length === 0 ? (
-                <p className="text-xs text-center py-4" style={{ color: "#a8a6c8" }}>还没有物品<br />派猫咪出去探险吧！</p>
+              {colsLoading ? (
+                <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin" style={{ color: "#a855f7" }} /></div>
+              ) : collections.length === 0 ? (
+                <div className="py-6 text-center rounded-2xl" style={{ background: "rgba(249,115,22,0.03)", border: "1px dashed rgba(249,115,22,0.15)" }}>
+                  <div className="text-3xl mb-2">🐾</div>
+                  <p className="text-xs" style={{ color: "#b45309" }}>{isZh ? "携带猫粮或罐罐出猎可带回收藏 NFT" : "Bring food/can to get Collection NFTs"}</p>
+                </div>
               ) : (
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {inventory.items.map((item, i) => (
-                    <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-xl"
-                      style={{ background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.15)" }}>
-                      <span className="text-sm">{item}</span>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  {collections.map(col => (
+                    <div key={col.tokenId} className="rounded-xl overflow-hidden"
+                      style={{ background: "white", border: "1px solid rgba(168,85,247,0.15)", boxShadow: "0 2px 8px rgba(168,85,247,0.06)" }}>
+                      <div className="aspect-square" style={{ background: "rgba(168,85,247,0.04)" }}>
+                        {col.image
+                          ? <img src={col.image} alt={col.name} className="w-full h-full object-cover" />
+                          : <div className="w-full h-full flex items-center justify-center text-3xl">🐾</div>}
+                      </div>
+                      <div className="p-2">
+                        <p className="text-xs font-bold truncate" style={{ color: "#92400e" }}>{col.name}</p>
+                        {col.description && <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "#b45309" }}>{col.description}</p>}
+                        <p className="text-xs font-mono mt-0.5" style={{ color: "#d97706" }}>#{col.tokenId}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
-              {inventory.fragments > 0 && (
-                <div className="mt-2 px-3 py-2 rounded-xl text-xs" style={{ background: "rgba(167,139,250,0.1)", color: "#A78BFA" }}>
-                  ✨ {inventory.fragments} 材料碎片 (10个 = 1张抽卡券)
+            </div>
+          </div>
+
+          {/* ── 右：Tab 面板 ── */}
+          <div className="flex flex-col gap-4">
+            {/* Tab 切换 */}
+            <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(249,115,22,0.06)" }}>
+              {([
+                { id: "bag"   as const, icon: <BagIcon size={12} />,   zh: "装备", en: "Gear"  },
+                { id: "frags" as const, icon: <Sparkles size={12} />,  zh: "碎片", en: "Frags" },
+                { id: "tips"  as const, icon: <span style={{ fontSize: 11 }}>💡</span>, zh: "提示", en: "Tips"  },
+              ]).map(t => (
+                <button key={t.id} onClick={() => setActivePanel(t.id)}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition-all"
+                  style={{
+                    background: activePanel === t.id ? "white" : "transparent",
+                    color: activePanel === t.id ? "#F97316" : "#b45309",
+                    cursor: "pointer",
+                    boxShadow: activePanel === t.id ? "0 1px 6px rgba(249,115,22,0.1)" : "none",
+                  }}>
+                  {t.icon}{isZh ? t.zh : t.en}
+                </button>
+              ))}
+            </div>
+
+            {/* 装备背包面板 */}
+            {activePanel === "bag" && (
+              <div className="rounded-2xl p-4" style={{ background: "white", border: "1px solid rgba(249,115,22,0.12)" }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Package size={14} style={{ color: "#F97316" }} />
+                  <span className="text-sm font-bold" style={{ color: "#92400e" }}>{isZh ? "装备背包" : "Equipment"}</span>
                 </div>
-              )}
-            </div>
-            <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #ddd6fe" }}>
-              <div className="text-xs font-bold mb-2 flex items-center justify-between" style={{ color: "#92400e", fontFamily: "'Space Grotesk', sans-serif" }}>
-                <span>🎴 抽卡</span>
-              </div>
-              <div className="text-xs mb-2" style={{ color: "#7c7aaa" }}>碎片：{inventory.fragments} / 10 = {Math.floor(inventory.fragments/10)} 券</div>
-              <button
-                onClick={() => { if (inventory.fragments >= 10) { setInventory(inv => ({ ...inv, fragments: inv.fragments - 10 })); showToast("🎉 获得 1 张抽卡券！去抽卡页面使用"); } else showToast("❌ 碎片不足 10 个"); }}
-                className="w-full py-2 rounded-xl text-xs font-bold mb-2"
-                style={{ background: inventory.fragments >= 10 ? "linear-gradient(135deg, #7C3AED, #06B6D4)" : "rgba(109,58,238,0.06)", color: inventory.fragments >= 10 ? "#fff" : "#a8a6c8", cursor: inventory.fragments >= 10 ? "pointer" : "default" }}>
-                🔮 10碎片 → 1抽卡券
-              </button>
-              <button onClick={() => { window.location.href = "/gacha"; }}
-                className="w-full py-2 rounded-xl text-xs font-bold"
-                style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)", color: "#FCD34D", cursor: "pointer" }}>
-                ✨ 前往抽卡页面
-              </button>
-            </div>
-            <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #ddd6fe" }}>
-              <div className="text-xs font-bold mb-2" style={{ color: "#92400e", fontFamily: "'Space Grotesk', sans-serif" }}>💡 游戏提示</div>
-              <ul className="space-y-1.5 text-xs" style={{ color: "#7c7aaa" }}>
-                <li>⚡ 体力每 8 小时恢复 1 点</li>
-                <li>🐟 携带猫粮或罐罐可带回 NFT</li>
-                <li>🎒 背包装备增加碎片产出</li>
-                <li>👟 靴子装备缩短探险时长</li>
-                <li>🔮 10 碎片合成 1 张抽卡券</li>
-              </ul>
-            </div>
-            <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.95)", border: "1px solid #ddd6fe" }}>
-              <div className="text-xs font-bold mb-3" style={{ color: "#92400e", fontFamily: "'Space Grotesk', sans-serif" }}>🎴 收藏系列</div>
-              <div className="grid grid-cols-3 gap-2">
-                {[{ icon: "🐱", name: "玩耍", rarity: "普通" }, { icon: "😺", name: "同伴", rarity: "稀有" }, { icon: "😸", name: "睡觉", rarity: "珍稀" }].map(n => (
-                  <div key={n.name} className="text-center p-2 rounded-xl" style={{ background: "rgba(109,58,238,0.04)", border: "1px solid rgba(109,58,238,0.08)" }}>
-                    <div className="text-2xl mb-1">{n.icon}</div>
-                    <div className="text-xs" style={{ color: "#7c7aaa" }}>{n.name}</div>
-                    <div className="text-xs mt-0.5" style={{ color: n.rarity === "珍稀" ? "#F59E0B" : n.rarity === "稀有" ? "#06B6D4" : "#a8a6c8" }}>{n.rarity}</div>
+                {equipsLoading ? (
+                  <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin" style={{ color: "#F97316" }} /></div>
+                ) : equipments.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <div className="text-4xl mb-2">🎒</div>
+                    <p className="text-xs mb-3" style={{ color: "#b45309" }}>{isZh ? "还没有装备，去抽卡获得！" : "No equipment yet!"}</p>
+                    <button onClick={() => navigate("/gacha")} className="px-4 py-2 rounded-xl text-xs font-bold text-white"
+                      style={{ background: "linear-gradient(135deg,#F97316,#fbbf24)", cursor: "pointer" }}>
+                      {isZh ? "前往抽卡" : "Go Gacha"}
+                    </button>
                   </div>
-                ))}
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto">
+                    {equipments.map(eq => (
+                      <div key={eq.tokenId} className="p-3 rounded-xl"
+                        style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.1)" }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xl">{SLOT_ICONS[eq.slot]}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold truncate" style={{ color: "#92400e" }}>{eq.name}</span>
+                              <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
+                                style={{ background: `${RARITY_COLORS[eq.rarity]}18`, color: RARITY_COLORS[eq.rarity], border: `1px solid ${RARITY_COLORS[eq.rarity]}30`, fontSize: "10px" }}>
+                                {RARITY_LABELS[eq.rarity]}
+                              </span>
+                            </div>
+                            <div className="text-xs" style={{ color: "#b45309" }}>{SLOT_LABELS[eq.slot]} #{eq.tokenId}</div>
+                          </div>
+                          {catState === "idle" && (
+                            <button onClick={() => handleEquip(cat.id, eq.tokenId)}
+                              className="flex-shrink-0 px-2 py-1 rounded-lg text-xs font-semibold"
+                              style={{ background: "rgba(249,115,22,0.1)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.2)", cursor: "pointer" }}>
+                              {isZh ? "装备" : "Equip"}
+                            </button>
+                          )}
+                        </div>
+                        {eq.lore && <p className="text-xs line-clamp-1 mt-0.5" style={{ color: "#d97706" }}>{eq.lore}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
+
+            {/* 碎片面板 */}
+            {activePanel === "frags" && (
+              <div className="rounded-2xl p-4" style={{ background: "white", border: "1px solid rgba(249,115,22,0.12)" }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles size={14} style={{ color: "#a855f7" }} />
+                  <span className="text-sm font-bold" style={{ color: "#92400e" }}>{isZh ? "材料碎片" : "Fragments"}</span>
+                </div>
+                <div className="text-center py-2">
+                  <div className="text-5xl font-black mb-1" style={{ color: "#a855f7" }}>{fragments}</div>
+                  <p className="text-xs mb-3" style={{ color: "#b45309" }}>{isZh ? "10 碎片 = 1 抽卡券" : "10 frags = 1 ticket"}</p>
+                  <div className="w-full bg-orange-50 rounded-full h-2 mb-4 overflow-hidden" style={{ border: "1px solid rgba(249,115,22,0.1)" }}>
+                    <div className="h-2 rounded-full transition-all"
+                      style={{ width: `${(fragments % 10) * 10}%`, background: "linear-gradient(90deg,#a855f7,#F97316)" }} />
+                  </div>
+                  <button onClick={() => navigate("/gacha")} className="w-full py-3 rounded-xl text-white text-sm font-bold"
+                    style={{ background: "linear-gradient(135deg,#a855f7,#F97316)", cursor: "pointer", boxShadow: "0 4px 16px rgba(168,85,247,0.2)" }}>
+                    ✨ {isZh ? "前往抽卡合成" : "Go to Gacha"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 提示面板 */}
+            {activePanel === "tips" && (
+              <div className="rounded-2xl p-4" style={{ background: "white", border: "1px solid rgba(249,115,22,0.12)" }}>
+                <div className="text-sm font-bold mb-3" style={{ color: "#92400e" }}>💡 {isZh ? "游戏提示" : "Tips"}</div>
+                <ul className="space-y-2 text-xs" style={{ color: "#b45309" }}>
+                  <li className="flex items-start gap-2">
+                    <Zap size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} />
+                    <span>{isZh ? "体力每8小时自然恢复1点，可点 + 花8 PURR购买" : "Stamina restores 1/8h, or buy via + for 8 PURR"}</span>
+                  </li>
+                  <li className="flex items-start gap-2"><span className="flex-shrink-0">🐟</span><span>{isZh ? "携带猫粮或罐罐才能带回收藏系列 NFT" : "Need food/can to earn Collection NFTs"}</span></li>
+                  <li className="flex items-start gap-2">
+                    <Sword size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} />
+                    <span>{isZh ? "武器装备提高出猎 NFT 的稀有度" : "Weapon raises NFT rarity on hunts"}</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <BagIcon size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} />
+                    <span>{isZh ? "背包装备增加碎片产出量" : "Bag boosts fragment yield"}</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Wind size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} />
+                    <span>{isZh ? "靴子装备缩短探险时长" : "Boots shortens hunt duration"}</span>
+                  </li>
+                  <li className="flex items-start gap-2"><span className="flex-shrink-0">🎴</span><span>{isZh ? "装备 NFT 只能通过抽卡获得" : "Equipment NFTs only from gacha"}</span></li>
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Hunt Modal */}
+      {/* ── 出猎弹窗 ── */}
       <AnimatePresence>
         {showHuntModal && (
           <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4"
-            style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
+            style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(8px)" }}>
             <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }}
-              className="w-full max-w-md rounded-3xl p-6"
-              style={{ background: "linear-gradient(145deg, #0D0D2B, #140D40)", border: "1px solid rgba(167,139,250,0.2)" }}>
+              className="w-full max-w-md rounded-3xl p-6 overflow-y-auto"
+              style={{ background: "#fffbf5", border: "1px solid rgba(249,115,22,0.2)", boxShadow: "0 20px 60px rgba(249,115,22,0.2)", maxHeight: "92vh" }}>
+
               <div className="flex justify-between items-center mb-5">
-                <h3 className="font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>配置探险</h3>
-                <button onClick={() => setShowHuntModal(false)} className="p-1.5 rounded-lg" style={{ background: "rgba(109,58,238,0.08)", color: "#7c7aaa", cursor: "pointer" }}><X size={15} /></button>
+                <h3 className="font-black text-lg" style={{ color: "#92400e" }}>🐾 {isZh ? "配置探险" : "Configure Hunt"}</h3>
+                <button onClick={() => setShowHuntModal(false)} className="p-1.5 rounded-lg"
+                  style={{ background: "rgba(249,115,22,0.08)", color: "#b45309", cursor: "pointer" }}><X size={15} /></button>
               </div>
-              <div className="mb-4">
-                <label className="text-xs mb-2 block" style={{ color: "#7c7aaa" }}>探险时长</label>
+
+              {/* 时长选择 */}
+              <div className="mb-5">
+                <label className="text-xs font-bold mb-2 block" style={{ color: "#b45309" }}>{isZh ? "探险时长" : "Duration"}</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {(Object.entries(HUNT_DURATIONS) as [HuntDuration, typeof HUNT_DURATIONS[HuntDuration]][]).map(([key, val]) => (
+                  {(Object.entries(HUNT_CONFIG) as [HuntDuration, typeof HUNT_CONFIG[HuntDuration]][]).map(([key, val]) => (
                     <button key={key} onClick={() => setHuntConfig(c => ({ ...c, duration: key }))}
-                      className="py-2 px-1 rounded-xl text-xs text-center transition-all"
-                      style={{ background: huntConfig.duration === key ? "rgba(124,58,237,0.3)" : "rgba(109,58,238,0.06)", border: huntConfig.duration === key ? "1px solid rgba(167,139,250,0.5)" : "1px solid rgba(109,58,238,0.08)", color: huntConfig.duration === key ? "#A78BFA" : "rgba(255,255,255,0.5)", cursor: "pointer" }}>
-                      <div>{val.label}</div>
-                      <div className="mt-0.5" style={{ color: huntConfig.duration === key ? "#FCD34D" : "rgba(255,255,255,0.3)" }}>⚡{val.stamina} +{val.fragments}碎片</div>
+                      className="py-3 px-2 rounded-xl text-center transition-all"
+                      style={{
+                        background: huntConfig.duration === key ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.04)",
+                        border: huntConfig.duration === key ? "2px solid rgba(249,115,22,0.5)" : "1px solid rgba(249,115,22,0.12)",
+                        color: huntConfig.duration === key ? "#c2410c" : "#b45309", cursor: "pointer",
+                      }}>
+                      <div className="text-xs font-bold">{isZh ? val.labelZh : val.labelEn}</div>
+                      <div className="text-xs mt-0.5" style={{ color: "#F97316" }}>⚡{val.stamina}</div>
+                      <div className="text-xs" style={{ color: "#d97706" }}>+{val.fragments[0]}~{val.fragments[1]} {isZh ? "碎片" : "frags"}</div>
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="mb-4">
-                <label className="text-xs mb-2 block" style={{ color: "#7c7aaa" }}>携带道具</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(Object.entries(ITEMS) as [HuntItem, typeof ITEMS[HuntItem]][]).map(([key, val]) => (
-                    <button key={key} onClick={() => setHuntConfig(c => ({ ...c, item: key }))}
-                      className="py-2 px-1 rounded-xl text-xs text-center transition-all"
-                      style={{ background: huntConfig.item === key ? "rgba(124,58,237,0.3)" : "rgba(109,58,238,0.06)", border: huntConfig.item === key ? "1px solid rgba(167,139,250,0.5)" : "1px solid rgba(109,58,238,0.08)", color: huntConfig.item === key ? "#A78BFA" : "rgba(255,255,255,0.5)", cursor: "pointer" }}>
-                      <div>{val.label}</div>
-                      <div className="mt-0.5" style={{ color: val.cost > 0 ? "#FCD34D" : "rgba(255,255,255,0.3)" }}>{val.cost > 0 ? `${val.cost} PURR` : "免费"}</div>
-                    </button>
-                  ))}
+
+              {/* 道具选择 + 购买 */}
+              <div className="mb-5">
+                <label className="text-xs font-bold mb-2 block" style={{ color: "#b45309" }}>
+                  {isZh ? "携带道具（携带才能带回收藏 NFT）" : "Item (needed for Collection NFTs)"}
+                </label>
+                <div className="space-y-2">
+                  {(Object.entries(ITEM_CONFIG) as [HuntItem, typeof ITEM_CONFIG[HuntItem]][]).map(([key, val]) => {
+                    const count = key === "food" ? foodCount : key === "can" ? canCount : null;
+                    const selected = huntConfig.item === key;
+                    return (
+                      <div key={key}
+                        className="flex items-center gap-3 p-3 rounded-xl transition-all"
+                        style={{
+                          background: selected ? "rgba(249,115,22,0.1)" : "rgba(249,115,22,0.03)",
+                          border: selected ? "2px solid rgba(249,115,22,0.4)" : "1px solid rgba(249,115,22,0.1)",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => setHuntConfig(c => ({ ...c, item: key }))}>
+                        <span className="text-2xl">{val.icon}</span>
+                        <div className="flex-1">
+                          <div className="text-xs font-bold" style={{ color: "#92400e" }}>
+                            {isZh ? val.labelZh : val.labelEn}
+                            {count !== null && <span className="ml-1.5 font-normal" style={{ color: "#d97706" }}>({isZh ? "库存" : "stock"}: {count})</span>}
+                          </div>
+                          <div className="text-xs" style={{ color: "#b45309" }}>{isZh ? val.descZh : val.descEn}</div>
+                        </div>
+                        {val.costPurr > 0 && count !== null && (
+                          <button onClick={e => { e.stopPropagation(); handleBuyItem(key as "food" | "can"); }}
+                            disabled={!!buyingItem || !signer}
+                            className="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
+                            style={{ background: "rgba(249,115,22,0.12)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.25)", cursor: signer ? "pointer" : "default" }}>
+                            {buyingItem === key ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+                            {val.costPurr} PURR
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-              <button onClick={() => setHuntConfig(c => ({ ...c, booster: !c.booster }))}
-                className="w-full py-2.5 rounded-xl text-xs mb-5 flex items-center justify-between px-4 transition-all"
-                style={{ background: huntConfig.booster ? "rgba(245,158,11,0.15)" : "rgba(109,58,238,0.04)", border: huntConfig.booster ? "1px solid rgba(245,158,11,0.3)" : "1px solid rgba(109,58,238,0.08)", color: huntConfig.booster ? "#FCD34D" : "rgba(255,255,255,0.5)", cursor: "pointer" }}>
-                <span>⚡ 使用加速符（时长减半）</span>
-                <span style={{ color: huntConfig.booster ? "#FCD34D" : "rgba(255,255,255,0.3)" }}>10 PURR</span>
-              </button>
-              <div className="flex justify-between items-center mb-4 px-3 py-2 rounded-xl" style={{ background: "rgba(109,58,238,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-                <span className="text-xs" style={{ color: "#7c7aaa" }}>总消耗</span>
-                <span className="text-xs" style={{ color: "#FCD34D", fontFamily: "'Space Grotesk', sans-serif" }}>
-                  ⚡{HUNT_DURATIONS[huntConfig.duration].stamina} + {ITEMS[huntConfig.item].cost + (huntConfig.booster ? 10 : 0)} PURR
+
+              {/* 加速符 */}
+              <div className="mb-5">
+                <div className="flex items-center gap-3 p-3 rounded-xl transition-all"
+                  style={{
+                    background: huntConfig.booster ? "rgba(249,115,22,0.1)" : "rgba(249,115,22,0.03)",
+                    border: huntConfig.booster ? "2px solid rgba(249,115,22,0.4)" : "1px solid rgba(249,115,22,0.1)",
+                  }}>
+                  <div className="flex items-center gap-3 flex-1 cursor-pointer" onClick={() => setHuntConfig(c => ({ ...c, booster: !c.booster }))}>
+                    <span className="text-2xl">⚡</span>
+                    <div>
+                      <div className="text-xs font-bold" style={{ color: "#92400e" }}>
+                        {isZh ? "加速符（时长减半）" : "Booster (half time)"}
+                        <span className="ml-1.5 font-normal" style={{ color: "#d97706" }}>({isZh ? "库存" : "stock"}: {boosterCount})</span>
+                      </div>
+                      <div className="text-xs" style={{ color: "#b45309" }}>10 PURR</div>
+                    </div>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); handleBuyItem("booster"); }}
+                    disabled={!!buyingItem || !signer}
+                    className="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
+                    style={{ background: "rgba(249,115,22,0.12)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.25)", cursor: signer ? "pointer" : "default" }}>
+                    {buyingItem === "booster" ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+                    {isZh ? "购买" : "Buy"}
+                  </button>
+                </div>
+              </div>
+
+              {/* 装备选择 */}
+              {equipments.length > 0 && (
+                <div className="mb-5">
+                  <label className="text-xs font-bold mb-2 block" style={{ color: "#b45309" }}>
+                    ⚔️ {isZh ? "选择装备（点击选中/取消）" : "Equipment (click to toggle)"}
+                  </label>
+                  <div className="space-y-1.5">
+                    {equipments.slice(0, 6).map(eq => {
+                      const isSel = selectedEquip[eq.slot] === eq.tokenId;
+                      return (
+                        <div key={eq.tokenId}
+                          onClick={() => setSelectedEquip(p => ({ ...p, [eq.slot]: isSel ? null : eq.tokenId }))}
+                          className="flex items-center gap-2 p-2.5 rounded-xl cursor-pointer transition-all"
+                          style={{
+                            background: isSel ? "rgba(249,115,22,0.12)" : "rgba(249,115,22,0.03)",
+                            border: isSel ? "1px solid rgba(249,115,22,0.35)" : "1px solid rgba(249,115,22,0.08)",
+                          }}>
+                          <span>{SLOT_ICONS[eq.slot]}</span>
+                          <span className="text-xs font-semibold flex-1 truncate" style={{ color: "#92400e" }}>{eq.name}</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded-full"
+                            style={{ background: `${RARITY_COLORS[eq.rarity]}18`, color: RARITY_COLORS[eq.rarity], fontSize: "10px" }}>
+                            {RARITY_LABELS[eq.rarity]}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 总消耗 */}
+              <div className="flex justify-between items-center mb-4 px-3 py-2.5 rounded-xl"
+                style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.12)" }}>
+                <span className="text-xs font-medium" style={{ color: "#b45309" }}>{isZh ? "总消耗" : "Total cost"}</span>
+                <span className="text-xs font-bold" style={{ color: "#c2410c" }}>
+                  ⚡{dur.stamina} + {ITEM_CONFIG[huntConfig.item].costPurr + (huntConfig.booster ? 10 : 0)} PURR
                 </span>
               </div>
-              <button onClick={startHunt} disabled={stamina < HUNT_DURATIONS[huntConfig.duration].stamina}
-                className="w-full py-3 rounded-2xl text-sm"
-                style={{ background: stamina >= HUNT_DURATIONS[huntConfig.duration].stamina ? "linear-gradient(135deg, #7C3AED, #06B6D4)" : "rgba(109,58,238,0.06)", color: stamina >= HUNT_DURATIONS[huntConfig.duration].stamina ? "#fff" : "rgba(255,255,255,0.3)", cursor: stamina >= HUNT_DURATIONS[huntConfig.duration].stamina ? "pointer" : "default", fontFamily: "'Space Grotesk', sans-serif", boxShadow: stamina >= HUNT_DURATIONS[huntConfig.duration].stamina ? "0 0 20px rgba(124,58,237,0.4)" : "none" }}>
-                {stamina < HUNT_DURATIONS[huntConfig.duration].stamina ? "体力不足" : "🐾 出发探险！"}
+
+              <button onClick={startHunt} disabled={stamina < dur.stamina}
+                className="w-full py-4 rounded-2xl font-black text-sm"
+                style={{
+                  background: stamina >= dur.stamina ? "linear-gradient(135deg,#F97316,#fbbf24)" : "rgba(249,115,22,0.08)",
+                  color: stamina >= dur.stamina ? "white" : "rgba(180,120,50,0.4)",
+                  cursor: stamina >= dur.stamina ? "pointer" : "default",
+                  boxShadow: stamina >= dur.stamina ? "0 4px 20px rgba(249,115,22,0.3)" : "none",
+                }}>
+                {stamina < dur.stamina ? (isZh ? "体力不足" : "Not enough stamina") : `🐾 ${isZh ? "出发探险！" : "Start Exploring!"}`}
               </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Shop Modal */}
+      {/* ── 奖励弹窗 ── */}
       <AnimatePresence>
-        {showShop && (
+        {showRewards && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-            style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-              className="w-full max-w-md rounded-3xl p-6"
-              style={{ background: "linear-gradient(145deg, #0D0D2B, #140D40)", border: "1px solid rgba(245,158,11,0.2)" }}>
-              <div className="flex justify-between items-center mb-5">
-                <h3 className="font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>🏪 道具商店</h3>
-                <button onClick={() => setShowShop(false)} className="p-1.5 rounded-lg" style={{ background: "rgba(109,58,238,0.08)", color: "#7c7aaa", cursor: "pointer" }}><X size={15} /></button>
-              </div>
-              <div className="text-xs mb-4 px-3 py-2 rounded-xl flex items-center gap-2" style={{ background: "rgba(245,158,11,0.1)", color: "#FCD34D", border: "1px solid rgba(245,158,11,0.2)" }}>
-                <Coins size={13} /> 余额：{purr} PURR
-              </div>
-              <div className="space-y-3">
-                {[
-                  { icon: "🐟", name: "猫粮",   desc: `带回 NFT 概率提升（已有：${foodCount}）`,     cost: 5,  action: () => buyItem("food", 5, "猫粮") },
-                  { icon: "🥫", name: "罐罐",   desc: `稀有 NFT 概率大幅提升（已有：${canCount}）`, cost: 15, action: () => buyItem("can", 15, "罐罐") },
-                  { icon: "⚡", name: "体力恢复", desc: "立即恢复 1 点体力",    cost: 8,  action: () => buyItem("stamina", 8, "体力") },
-                  { icon: "🔮", name: "加速符", desc: `本次出猎时长减半（已有：${boosterCount}）`,  cost: 10, action: () => buyItem("booster", 10, "加速符") },
-                ].map(item => (
-                  <div key={item.name} className="flex items-center justify-between p-3 rounded-xl"
-                    style={{ background: "rgba(109,58,238,0.04)", border: "1px solid rgba(109,58,238,0.08)" }}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{item.icon}</span>
-                      <div>
-                        <div className="text-sm font-bold" style={{ color: "#e2d9f3", fontFamily: "'Space Grotesk', sans-serif" }}>{item.name}</div>
-                        <div className="text-xs" style={{ color: "#7c7aaa" }}>{item.desc}</div>
-                      </div>
-                    </div>
-                    <button onClick={item.action} disabled={purr < item.cost}
-                      className="px-3 py-1.5 rounded-lg text-xs transition-all"
-                      style={{ background: purr >= item.cost ? "rgba(124,58,237,0.2)" : "rgba(109,58,238,0.04)", border: purr >= item.cost ? "1px solid rgba(124,58,237,0.3)" : "1px solid rgba(109,58,238,0.06)", color: purr >= item.cost ? "#A78BFA" : "rgba(109,58,238,0.25)", cursor: purr >= item.cost ? "pointer" : "default" }}>
-                      {item.cost} PURR
-                    </button>
-                  </div>
+            style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(12px)" }}>
+            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: "spring", damping: 14 }}
+              className="w-full max-w-sm rounded-3xl p-6 text-center"
+              style={{ background: "#fffbf5", border: "1px solid rgba(249,115,22,0.25)", boxShadow: "0 20px 60px rgba(249,115,22,0.2)" }}>
+              <motion.div animate={{ rotate: [0, -10, 10, -5, 5, 0] }} transition={{ duration: 0.5 }} className="text-5xl mb-3">🎉</motion.div>
+              <h3 className="font-black text-lg mb-1" style={{ color: "#92400e" }}>{cat.name} {isZh ? "回来了！" : "is back!"}</h3>
+              <p className="text-sm mb-4" style={{ color: "#b45309" }}>{isZh ? "带回了以下战利品" : "Loot collected!"}</p>
+              <div className="space-y-2 mb-5">
+                <div className="flex items-center justify-between px-4 py-2.5 rounded-xl"
+                  style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.15)" }}>
+                  <span className="text-sm font-semibold" style={{ color: "#92400e" }}>✨ {isZh ? "材料碎片" : "Fragments"}</span>
+                  <span className="text-sm font-black" style={{ color: "#a855f7" }}>+{rewardFragments}</span>
+                </div>
+                {rewards.map((r, i) => (
+                  <motion.div key={i} initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: i * 0.15 }}
+                    className="flex items-center justify-between px-4 py-2.5 rounded-xl"
+                    style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.18)" }}>
+                    <span className="text-sm font-semibold" style={{ color: "#92400e" }}>{r.icon} {r.name} NFT</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold"
+                      style={{
+                        background: r.rarity === "珍稀" ? "rgba(245,158,11,0.15)" : r.rarity === "稀有" ? "rgba(96,165,250,0.15)" : "rgba(156,163,175,0.15)",
+                        color: r.rarity === "珍稀" ? "#d97706" : r.rarity === "稀有" ? "#3b82f6" : "#9CA3AF",
+                      }}>
+                      {r.rarity}
+                    </span>
+                  </motion.div>
                 ))}
+                {rewards.length === 0 && (
+                  <div className="px-4 py-2.5 rounded-xl text-sm" style={{ background: "rgba(249,115,22,0.04)", color: "#b45309" }}>
+                    {isZh ? "这次没有 NFT 掉落（未携带道具）" : "No NFT drop (no item brought)"}
+                  </div>
+                )}
               </div>
+              <button onClick={() => { setShowRewards(false); loadChainData(); loadCollections(); }}
+                className="w-full py-3.5 rounded-2xl text-white font-black text-sm"
+                style={{ background: "linear-gradient(135deg,#F97316,#fbbf24)", cursor: "pointer", boxShadow: "0 4px 16px rgba(249,115,22,0.3)" }}>
+                {isZh ? "太棒了！继续冒险" : "Awesome! Keep exploring"}
+              </button>
             </motion.div>
           </div>
         )}
@@ -617,53 +976,11 @@ export function Game() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-2xl text-sm font-bold"
-          style={{ background: "rgba(15,12,40,0.95)", color: "#e2d9f3", border: "1px solid rgba(167,139,250,0.3)", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", fontFamily: "'Space Grotesk', sans-serif" }}>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-2xl text-sm font-bold pointer-events-none"
+          style={{ background: "#fffbf5", color: "#92400e", border: "1px solid rgba(249,115,22,0.3)", boxShadow: "0 8px 32px rgba(249,115,22,0.2)" }}>
           {toast}
         </div>
       )}
-
-      {/* Rewards Modal */}
-      <AnimatePresence>
-        {showRewards && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-            style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(12px)" }}>
-            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }}
-              className="w-full max-w-sm rounded-3xl p-6 text-center"
-              style={{ background: "linear-gradient(145deg, #0D0D2B, #1a0d40)", border: "1px solid #c4b5fd", boxShadow: "0 0 60px rgba(124,58,237,0.4)" }}>
-              <motion.div animate={{ rotate: [0, -10, 10, -5, 5, 0] }} transition={{ duration: 0.5 }} className="text-5xl mb-4">🎉</motion.div>
-              <h3 className="font-bold text-white mb-2" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{cat.name} 回来了！</h3>
-              <p className="text-sm mb-4" style={{ color: "#4c4980" }}>带回了以下战利品</p>
-              <div className="space-y-2 mb-5">
-                <div className="flex items-center justify-between px-4 py-2 rounded-xl" style={{ background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.2)" }}>
-                  <span className="text-sm text-white">✨ 材料碎片</span>
-                  <span className="text-sm" style={{ color: "#A78BFA", fontFamily: "'Space Grotesk', sans-serif" }}>+{fragments} 个</span>
-                </div>
-                {rewards.map((r, i) => (
-                  <motion.div key={i} initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: i * 0.15 }}
-                    className="flex items-center justify-between px-4 py-2 rounded-xl"
-                    style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.25)" }}>
-                    <span className="text-sm text-white">{r.icon} {r.name} NFT</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full"
-                      style={{ background: r.rarity === "珍稀" ? "rgba(245,158,11,0.2)" : r.rarity === "稀有" ? "rgba(6,182,212,0.2)" : "rgba(109,58,238,0.08)", color: r.rarity === "珍稀" ? "#FCD34D" : r.rarity === "稀有" ? "#06B6D4" : "rgba(255,255,255,0.5)" }}>
-                      {r.rarity}
-                    </span>
-                  </motion.div>
-                ))}
-                {rewards.length === 0 && (
-                  <div className="px-4 py-2 rounded-xl text-sm" style={{ background: "rgba(109,58,238,0.06)", color: "#7c7aaa" }}>
-                    这次没有 NFT 掉落（未携带道具）
-                  </div>
-                )}
-              </div>
-              <button onClick={() => setShowRewards(false)} className="w-full py-3 rounded-2xl text-white text-sm"
-                style={{ background: "linear-gradient(135deg, #7C3AED, #06B6D4)", fontFamily: "'Space Grotesk', sans-serif", cursor: "pointer" }}>
-                太棒了！继续冒险
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
