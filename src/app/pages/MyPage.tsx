@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Heart, Gift, Image, CreditCard, ArrowLeft, Loader2, ExternalLink } from "lucide-react";
+import { Heart, Gift, Image, CreditCard, ArrowLeft, Loader2, ExternalLink, RefreshCw, X, ZoomIn } from "lucide-react";
 import { Navbar } from "../components/Navbar";
 import { useApp } from "../context/AppContext";
 import { getReadonlyContracts, getContracts, ADDRESSES } from "../../lib/contracts";
@@ -22,35 +22,34 @@ function DonationsPanel({ isZh }: { isZh: boolean }) {
   const [loading,  setLoading]  = useState(true);
   const [records,  setRecords]  = useState<DonationRecord[]>([]);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!walletAddress) { setLoading(false); return; }
-    const load = async () => {
-      setLoading(true);
-      try {
-        const c = getReadonlyContracts();
-        const total = Number(await c.catRegistry.catCount());
-        const found: DonationRecord[] = [];
-        for (let i = 0; i < total; i++) {
-          try {
-            const donated = await c.donationVault.userCatDonation(walletAddress, i);
-            if ((donated as bigint) === 0n) continue;
-            const remaining = await c.donationVault.remainingToNextStage(walletAddress, i);
-            const raw = await c.catRegistry.getCat(i) as { name: string };
-            found.push({
-              catId: i,
-              catName: raw.name || `Cat #${i}`,
-              total: parseFloat(ethers.formatEther(donated as bigint)).toFixed(3),
-              remaining: parseFloat(ethers.formatEther(remaining as bigint)).toFixed(3),
-            });
-          } catch { /* 跳过读取失败的猫 */ }
-        }
-        setRecords(found);
-      } catch (e) {
-        console.error("捐赠记录读取失败:", e);
-      } finally { setLoading(false); }
-    };
-    load();
+    setLoading(true);
+    try {
+      const c = getReadonlyContracts();
+      const total = Number(await c.catRegistry.catCount());
+      const found: DonationRecord[] = [];
+      for (let i = 0; i < total; i++) {
+        try {
+          const donated = await c.donationVault.userCatDonation(walletAddress, i);
+          if ((donated as bigint) === 0n) continue;
+          const remaining = await c.donationVault.remainingToNextMint(walletAddress, i);
+          const raw = await c.catRegistry.getCat(i) as { name: string };
+          found.push({
+            catId: i,
+            catName: raw.name || `Cat #${i}`,
+            total: parseFloat(ethers.formatEther(donated as bigint)).toFixed(3),
+            remaining: parseFloat(ethers.formatEther(remaining as bigint)).toFixed(3),
+          });
+        } catch { /* 跳过读取失败的猫 */ }
+      }
+      setRecords(found);
+    } catch (e) {
+      console.error("捐赠记录读取失败:", e);
+    } finally { setLoading(false); }
   }, [walletAddress]);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) return (
     <div className="flex items-center justify-center py-16 gap-3">
@@ -71,9 +70,17 @@ function DonationsPanel({ isZh }: { isZh: boolean }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm font-medium mb-4" style={{ color: "#b45309" }}>
-        {isZh ? `共捐助了 ${records.length} 只猫咪` : `Donated to ${records.length} cat${records.length > 1 ? "s" : ""}`}
-      </p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm font-medium" style={{ color: "#b45309" }}>
+          {isZh ? `共捐助了 ${records.length} 只猫咪` : `Donated to ${records.length} cat${records.length > 1 ? "s" : ""}`}
+        </p>
+        <button onClick={load} disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+          style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.2)", color: "#c2410c", cursor: "pointer" }}>
+          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          {isZh ? "刷新" : "Refresh"}
+        </button>
+      </div>
       {records.map(r => (
         <div key={r.catId}
           onClick={() => navigate(`/cat/${r.catId}`)}
@@ -323,6 +330,7 @@ function NFTPanel({ isZh }: { isZh: boolean }) {
   const [loading,  setLoading]  = useState(true);
   const [nfts,     setNfts]     = useState<NFTItem[]>([]);
   const [progress, setProgress] = useState(0);
+  const [selectedNft, setSelectedNft] = useState<NFTItem | null>(null);
 
   useEffect(() => {
     if (!walletAddress) { setLoading(false); return; }
@@ -399,6 +407,7 @@ function NFTPanel({ isZh }: { isZh: boolean }) {
   );
 
   return (
+    <>
     <div>
       <p className="text-sm mb-4 font-medium" style={{ color: "#b45309" }}>
         {isZh ? `共 ${nfts.length} 个 NFT` : `${nfts.length} NFTs`}
@@ -407,17 +416,24 @@ function NFTPanel({ isZh }: { isZh: boolean }) {
         {nfts.map(nft => {
           const typeInfo = NFT_TYPE_LABEL[nft.nftType];
           return (
-            <div key={nft.tokenId} className="rounded-2xl overflow-hidden"
-              style={{ background: "#fff9f5", border: "1px solid rgba(249,115,22,0.12)" }}>
+            <div key={nft.tokenId} className="rounded-2xl overflow-hidden cursor-pointer transition-all"
+              style={{ background: "#fff9f5", border: "1px solid rgba(249,115,22,0.12)" }}
+              onClick={() => setSelectedNft(nft)}
+              onMouseEnter={e => (e.currentTarget.style.boxShadow = "0 8px 24px rgba(249,115,22,0.18)")}
+              onMouseLeave={e => (e.currentTarget.style.boxShadow = "none")}>
               {/* 图片 */}
-              <div className="aspect-square relative overflow-hidden"
+              <div className="aspect-square relative overflow-hidden group"
                 style={{ background: "rgba(249,115,22,0.06)" }}>
                 {nft.image ? (
                   <img src={nft.image} alt={nft.name}
-                    className="w-full h-full object-cover" />
+                    className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-4xl">🐱</div>
                 )}
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ background: "rgba(0,0,0,0.3)" }}>
+                  <ZoomIn size={24} color="white" />
+                </div>
               </div>
               {/* 信息 */}
               <div className="p-3">
@@ -438,6 +454,46 @@ function NFTPanel({ isZh }: { isZh: boolean }) {
         })}
       </div>
     </div>
+
+      {/* NFT 放大 Modal */}
+      {selectedNft && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(12px)" }}
+          onClick={() => setSelectedNft(null)}>
+          <div className="relative max-w-md w-full rounded-3xl overflow-hidden"
+            style={{ background: "#fffbf5", border: "1px solid rgba(249,115,22,0.2)", boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}
+            onClick={e => e.stopPropagation()}>
+            <button onClick={() => setSelectedNft(null)}
+              className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(0,0,0,0.4)", color: "white", cursor: "pointer" }}>
+              <X size={16} />
+            </button>
+            {selectedNft.image ? (
+              <img src={selectedNft.image} alt={selectedNft.name} className="w-full object-contain"
+                style={{ maxHeight: "60vh", background: "#000" }} />
+            ) : (
+              <div className="w-full flex items-center justify-center text-8xl py-16"
+                style={{ background: "rgba(249,115,22,0.06)" }}>🐱</div>
+            )}
+            <div className="p-5">
+              <div className="flex items-center gap-2 mb-2">
+                {(() => { const ti = NFT_TYPE_LABEL[selectedNft.nftType]; return (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                    style={{ background: `${ti?.color ?? "#888"}18`, color: ti?.color ?? "#888", border: `1px solid ${ti?.color ?? "#888"}30` }}>
+                    {isZh ? ti?.zh : ti?.en}
+                  </span>
+                ); })()}
+                <span className="text-xs font-mono ml-auto" style={{ color: "#d97706" }}>#{selectedNft.tokenId}</span>
+              </div>
+              <p className="font-bold mb-1" style={{ color: "#92400e" }}>{selectedNft.metaName || selectedNft.name}</p>
+              {selectedNft.description && (
+                <p className="text-sm leading-relaxed" style={{ color: "#b45309" }}>{selectedNft.description}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

@@ -5,7 +5,8 @@ import { getReadonlyContracts, getContracts, ADDRESSES } from "../../lib/contrac
 import { ethers } from "ethers";
 import {
   ShieldCheck, Clock, CheckCircle, XCircle, RefreshCw,
-  ExternalLink, ArrowLeft, Home, Search, Coins, Send, Plus, Trash2
+  ExternalLink, ArrowLeft, Home, Search, Coins, Send, Plus, Trash2,
+  Gamepad2, Layers, Sword, ToggleLeft, ToggleRight, Loader2
 } from "lucide-react";
 import { Navbar } from "../components/Navbar";
 
@@ -48,6 +49,23 @@ export function AdminPage() {
   const [setSharesLoading,  setSetSharesLoading]  = useState(false);
   const [distributeResult,  setDistributeResult]  = useState<string | null>(null);
   const [sharesResult,      setSharesResult]      = useState<string | null>(null);
+
+  // ── 游戏配置状态 ──
+  interface SeriesInfo { id: number; name: string; uri: string; active: boolean; }
+  interface EquipTemplate { slot: number; rarity: number; name: string; lore: string; rarityBonus: number; safetyBonus: number; carryBonus: number; speedBonus: number; }
+
+  const [seriesList,        setSeriesList]        = useState<SeriesInfo[]>([]);
+  const [seriesLoading,     setSeriesLoading]     = useState(false);
+  const [addSeriesName,     setAddSeriesName]     = useState("");
+  const [addSeriesUri,      setAddSeriesUri]      = useState("");
+  const [addSeriesLoading,  setAddSeriesLoading]  = useState(false);
+  const [seriesResult,      setSeriesResult]      = useState<string | null>(null);
+
+  const [equipTemplates,        setEquipTemplates]        = useState<(EquipTemplate & { id: number })[]>([]);
+  const [equipsLoading,         setEquipsLoading]         = useState(false);
+  const [newTemplate,           setNewTemplate]           = useState<EquipTemplate>({ slot: 0, rarity: 0, name: "", lore: "", rarityBonus: 0, safetyBonus: 0, carryBonus: 0, speedBonus: 0 });
+  const [addTemplateLoading,    setAddTemplateLoading]    = useState(false);
+  const [templateResult,        setTemplateResult]        = useState<string | null>(null);
 
   // localStorage key for caching scanned block range
   // key 包含合约地址，合约重部署后自动失效
@@ -145,7 +163,108 @@ export function AdminPage() {
     } catch {}
   }, []);
 
-  useEffect(() => { loadShelters(); loadVaultBalance(); }, [loadShelters, loadVaultBalance]);
+  const loadSeries = useCallback(async () => {
+    setSeriesLoading(true);
+    try {
+      const c = getReadonlyContracts();
+      const count = Number(await c.catNFT.seriesCount());
+      const list: SeriesInfo[] = [];
+      for (let i = 0; i < count; i++) {
+        try {
+          const s = await c.catNFT.getCollectionSeries(i) as { name: string; uri: string; active: boolean };
+          list.push({ id: i, name: s.name, uri: s.uri, active: s.active });
+        } catch { /* skip */ }
+      }
+      setSeriesList(list);
+    } catch (e) { console.error("loadSeries:", e); }
+    finally { setSeriesLoading(false); }
+  }, []);
+
+  const loadEquipTemplates = useCallback(async () => {
+    setEquipsLoading(true);
+    try {
+      const c = getReadonlyContracts();
+      const [balRaw, totalRaw] = await Promise.all([
+        c.equipmentNFT.totalSupply().catch(() => 0n),
+        c.equipmentNFT.totalSupply().catch(() => 0n),
+      ]);
+      // Scan last 50 equipment NFTs to infer template IDs used
+      const total = Number(totalRaw ?? balRaw ?? 0);
+      const templateIds = new Set<number>();
+      const limit = Math.min(total, 50);
+      for (let i = Math.max(0, total - limit); i < total; i++) {
+        try {
+          const eq = await c.equipmentNFT.getEquipment(i) as { slot: bigint; rarity: bigint; name: string; lore: string; rarityBonus: bigint; safetyBonus: bigint; carryBonus: bigint; speedBonus: bigint };
+          const key = `${Number(eq.slot)}_${Number(eq.rarity)}_${eq.name}`;
+          if (!templateIds.has(Number(eq.rarity) * 100 + Number(eq.slot))) {
+            templateIds.add(Number(eq.rarity) * 100 + Number(eq.slot));
+            setEquipTemplates(prev => {
+              const exists = prev.some(t => t.slot === Number(eq.slot) && t.rarity === Number(eq.rarity) && t.name === eq.name);
+              if (exists) return prev;
+              return [...prev, { id: i, slot: Number(eq.slot), rarity: Number(eq.rarity), name: eq.name, lore: eq.lore, rarityBonus: Number(eq.rarityBonus), safetyBonus: Number(eq.safetyBonus), carryBonus: Number(eq.carryBonus), speedBonus: Number(eq.speedBonus) }];
+            });
+          }
+        } catch { /* skip */ }
+      }
+    } catch (e) { console.error("loadEquipTemplates:", e); }
+    finally { setEquipsLoading(false); }
+  }, []);
+
+  const handleAddSeries = async () => {
+    if (!signer || !isOwner) { setSeriesResult(isZh ? "⚠️ 仅 Owner 可添加系列" : "⚠️ Owner only"); return; }
+    if (!addSeriesName.trim()) { setSeriesResult(isZh ? "请输入系列名称" : "Enter series name"); return; }
+    setAddSeriesLoading(true); setSeriesResult(null);
+    try {
+      const c = getContracts(signer);
+      const tx = await c.catNFT.addCollectionSeries(addSeriesName.trim(), addSeriesUri.trim());
+      await (tx as ethers.ContractTransactionResponse).wait();
+      setSeriesResult(isZh ? `✅ 系列「${addSeriesName}」已添加` : `✅ Series "${addSeriesName}" added`);
+      setAddSeriesName(""); setAddSeriesUri("");
+      await loadSeries();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setSeriesResult(isZh ? `❌ 失败：${msg.slice(0, 80)}` : `❌ Failed: ${msg.slice(0, 80)}`);
+    } finally { setAddSeriesLoading(false); }
+  };
+
+  const handleToggleSeries = async (id: number, active: boolean) => {
+    if (!signer || !isOwner) { setSeriesResult(isZh ? "⚠️ 仅 Owner 可操作（非 Admin）" : "⚠️ Owner only (not Admin)"); return; }
+    setSeriesResult(null);
+    try {
+      const c = getContracts(signer);
+      const tx = await c.catNFT.setCollectionSeriesActive(id, !active);
+      await (tx as ethers.ContractTransactionResponse).wait();
+      setSeriesResult(isZh ? `✅ 系列 #${id} 已${!active ? "启用" : "停用"}` : `✅ Series #${id} ${!active ? "enabled" : "disabled"}`);
+      await loadSeries();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setSeriesResult(isZh ? `❌ 失败：${msg.slice(0, 60)}` : `❌ Failed: ${msg.slice(0, 60)}`);
+    }
+  };
+
+  const handleAddTemplate = async () => {
+    if (!signer || !isAdmin) { setTemplateResult(isZh ? "请先连接管理员钱包" : "Connect admin wallet"); return; }
+    if (!newTemplate.name.trim()) { setTemplateResult(isZh ? "请输入模板名称" : "Enter template name"); return; }
+    setAddTemplateLoading(true); setTemplateResult(null);
+    try {
+      const c = getContracts(signer);
+      const tx = await c.gameContract.addEquipTemplate(
+        newTemplate.rarity, newTemplate.slot,
+        newTemplate.name.trim(), newTemplate.lore.trim(),
+        newTemplate.rarityBonus, newTemplate.safetyBonus,
+        newTemplate.carryBonus, newTemplate.speedBonus,
+      );
+      await (tx as ethers.ContractTransactionResponse).wait();
+      setTemplateResult(isZh ? `✅ 模板「${newTemplate.name}」已添加` : `✅ Template "${newTemplate.name}" added`);
+      setNewTemplate({ slot: 0, rarity: 0, name: "", lore: "", rarityBonus: 0, safetyBonus: 0, carryBonus: 0, speedBonus: 0 });
+      await loadEquipTemplates();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setTemplateResult(isZh ? `❌ 失败：${msg.slice(0, 80)}` : `❌ Failed: ${msg.slice(0, 80)}`);
+    } finally { setAddTemplateLoading(false); }
+  };
+
+  useEffect(() => { loadShelters(); loadVaultBalance(); loadSeries(); loadEquipTemplates(); }, [loadShelters, loadVaultBalance, loadSeries, loadEquipTemplates]);
 
   // 投票审批机构（approve=true赞成，false反对）
   const voteShelter = async (addr: string, approve: boolean) => {
@@ -277,7 +396,7 @@ export function AdminPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => { loadShelters(); loadVaultBalance(); }} disabled={loading}
+            <button onClick={() => { loadShelters(); loadVaultBalance(); loadSeries(); loadEquipTemplates(); }} disabled={loading}
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
               style={{ background:"rgba(249,115,22,0.08)", border:"1px solid rgba(249,115,22,0.15)", color:"#c2410c", cursor:"pointer" }}>
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
@@ -471,6 +590,220 @@ export function AdminPage() {
               style={{ background:!isAdmin?"rgba(168,85,247,0.3)":"linear-gradient(135deg,#a855f7,#9333ea)", cursor:(!isAdmin||distributeLoading)?"not-allowed":"pointer", opacity:distributeLoading?0.7:1 }}>
               {distributeLoading?<span className="animate-spin">⚙️</span>:<Send size={15} />}{isZh?"触发分账":"Distribute"}
             </button>
+          </div>
+        </div>
+
+        {/* ── 游戏配置面板 ── */}
+        <div className="mt-8 p-6 rounded-2xl" style={{ background: "#fff9f5", border: "1px solid rgba(249,115,22,0.12)" }}>
+          <div className="flex items-center gap-2 mb-6">
+            <Gamepad2 size={18} color="#F97316" />
+            <h2 className="text-lg font-bold" style={{ color: "#92400e" }}>{isZh ? "游戏配置" : "Game Config"}</h2>
+          </div>
+
+          {/* ── Collection Series ── */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Layers size={15} color="#a855f7" />
+                <h3 className="font-bold" style={{ color: "#92400e" }}>{isZh ? "收藏系列管理" : "Collection Series"}</h3>
+                <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(168,85,247,0.1)", color: "#a855f7", border: "1px solid rgba(168,85,247,0.2)" }}>
+                  {seriesList.length}
+                </span>
+              </div>
+              <button onClick={loadSeries} disabled={seriesLoading}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs"
+                style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.2)", color: "#a855f7", cursor: "pointer" }}>
+                <RefreshCw size={11} className={seriesLoading ? "animate-spin" : ""} />
+                {isZh ? "刷新" : "Refresh"}
+              </button>
+            </div>
+
+            {/* 现有系列列表 */}
+            {seriesLoading ? (
+              <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin" style={{ color: "#a855f7" }} /></div>
+            ) : seriesList.length === 0 ? (
+              <div className="py-4 text-center rounded-xl mb-4" style={{ background: "rgba(168,85,247,0.04)", border: "1px dashed rgba(168,85,247,0.2)" }}>
+                <p className="text-xs" style={{ color: "#b45309" }}>{isZh ? "暂无收藏系列" : "No series yet"}</p>
+              </div>
+            ) : (
+              <div className="space-y-2 mb-4">
+                {seriesList.map(s => (
+                  <div key={s.id} className="flex items-center justify-between gap-3 p-3 rounded-xl"
+                    style={{ background: s.active ? "rgba(168,85,247,0.06)" : "rgba(100,116,139,0.05)", border: `1px solid ${s.active ? "rgba(168,85,247,0.2)" : "rgba(100,116,139,0.15)"}` }}>
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "rgba(168,85,247,0.1)", color: "#a855f7" }}>#{s.id}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold truncate" style={{ color: "#92400e" }}>{s.name}</p>
+                        {s.uri && <p className="text-xs font-mono truncate" style={{ color: "#d97706" }}>{s.uri.slice(0, 40)}{s.uri.length > 40 ? "…" : ""}</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs px-2 py-0.5 rounded-full"
+                        style={{ background: s.active ? "rgba(22,163,74,0.1)" : "rgba(100,116,139,0.1)", color: s.active ? "#16a34a" : "#64748b", border: `1px solid ${s.active ? "rgba(22,163,74,0.2)" : "rgba(100,116,139,0.2)"}` }}>
+                        {s.active ? (isZh ? "启用" : "Active") : (isZh ? "停用" : "Inactive")}
+                      </span>
+                      {isOwner && (
+                        <button onClick={() => handleToggleSeries(s.id, s.active)}
+                          className="p-1.5 rounded-lg transition-all"
+                          style={{ background: s.active ? "rgba(100,116,139,0.08)" : "rgba(22,163,74,0.08)", color: s.active ? "#64748b" : "#16a34a", border: `1px solid ${s.active ? "rgba(100,116,139,0.2)" : "rgba(22,163,74,0.2)"}`, cursor: "pointer" }}
+                          title={s.active ? (isZh ? "停用此系列" : "Disable series") : (isZh ? "启用此系列" : "Enable series")}>
+                          {s.active ? <ToggleRight size={15} /> : <ToggleLeft size={15} />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 添加新系列 */}
+            {isOwner && (
+              <div className="p-4 rounded-xl" style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.15)" }}>
+                <p className="text-xs font-bold mb-3" style={{ color: "#a855f7" }}>＋ {isZh ? "添加新系列（仅 Owner）" : "Add New Series (Owner only)"}</p>
+                <div className="space-y-2">
+                  <input value={addSeriesName} onChange={e => setAddSeriesName(e.target.value)}
+                    placeholder={isZh ? "系列名称（如：Summer 2025）" : "Series name (e.g. Summer 2025)"}
+                    className="w-full px-3 py-2 rounded-xl outline-none text-sm"
+                    style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }} />
+                  <input value={addSeriesUri} onChange={e => setAddSeriesUri(e.target.value)}
+                    placeholder={isZh ? "元数据 URI（可选，如：ipfs://...）" : "Metadata URI (optional, e.g. ipfs://...)"}
+                    className="w-full px-3 py-2 rounded-xl outline-none text-sm font-mono"
+                    style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }} />
+                </div>
+                {seriesResult && (
+                  <p className="text-xs mt-2 font-semibold" style={{ color: seriesResult.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{seriesResult}</p>
+                )}
+                <button onClick={handleAddSeries} disabled={addSeriesLoading || !addSeriesName.trim()}
+                  className="mt-3 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white"
+                  style={{ background: (!addSeriesName.trim() || addSeriesLoading) ? "rgba(168,85,247,0.3)" : "linear-gradient(135deg,#a855f7,#9333ea)", cursor: (!addSeriesName.trim() || addSeriesLoading) ? "default" : "pointer", opacity: addSeriesLoading ? 0.7 : 1 }}>
+                  {addSeriesLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  {isZh ? "添加系列" : "Add Series"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ── Equipment Templates ── */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Sword size={15} color="#F97316" />
+                <h3 className="font-bold" style={{ color: "#92400e" }}>{isZh ? "装备模板管理" : "Equipment Templates"}</h3>
+                <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(249,115,22,0.1)", color: "#F97316", border: "1px solid rgba(249,115,22,0.2)" }}>
+                  {equipTemplates.length}
+                </span>
+              </div>
+              <button onClick={loadEquipTemplates} disabled={equipsLoading}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs"
+                style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.2)", color: "#c2410c", cursor: "pointer" }}>
+                <RefreshCw size={11} className={equipsLoading ? "animate-spin" : ""} />
+                {isZh ? "刷新" : "Refresh"}
+              </button>
+            </div>
+
+            {/* 现有模板列表 */}
+            {equipsLoading ? (
+              <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin" style={{ color: "#F97316" }} /></div>
+            ) : equipTemplates.length === 0 ? (
+              <div className="py-4 text-center rounded-xl mb-4" style={{ background: "rgba(249,115,22,0.03)", border: "1px dashed rgba(249,115,22,0.15)" }}>
+                <p className="text-xs" style={{ color: "#b45309" }}>{isZh ? "暂无装备模板（链上装备为空）" : "No templates found (no equipment on chain)"}</p>
+              </div>
+            ) : (
+              <div className="space-y-2 mb-4">
+                {(() => {
+                  const SLOT_ICONS = ["⚔️","🎒","👟"];
+                  const SLOT_NAMES = isZh ? ["武器","背包","靴子"] : ["Weapon","Bag","Boots"];
+                  const RARITY_LABELS = isZh ? ["普通","精良","稀有","传说"] : ["Common","Fine","Rare","Legendary"];
+                  const RARITY_COLORS = ["#9CA3AF","#34D399","#60A5FA","#FBBF24"];
+                  return equipTemplates.map((t, i) => (
+                    <div key={i} className="p-3 rounded-xl flex items-center gap-3"
+                      style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.1)" }}>
+                      <span className="text-xl">{SLOT_ICONS[t.slot]}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold" style={{ color: "#92400e" }}>{t.name}</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: `${RARITY_COLORS[t.rarity]}18`, color: RARITY_COLORS[t.rarity], border: `1px solid ${RARITY_COLORS[t.rarity]}30`, fontSize: "10px" }}>
+                            {RARITY_LABELS[t.rarity]}
+                          </span>
+                          <span className="text-xs" style={{ color: "#b45309" }}>{SLOT_NAMES[t.slot]}</span>
+                        </div>
+                        {t.lore && <p className="text-xs mt-0.5 truncate" style={{ color: "#d97706" }}>{t.lore}</p>}
+                        <div className="flex gap-3 mt-1">
+                          {t.rarityBonus > 0 && <span className="text-xs" style={{ color: "#FBBF24" }}>🏆+{t.rarityBonus}</span>}
+                          {t.safetyBonus > 0 && <span className="text-xs" style={{ color: "#34D399" }}>🛡+{t.safetyBonus}</span>}
+                          {t.carryBonus  > 0 && <span className="text-xs" style={{ color: "#60A5FA" }}>🎒+{t.carryBonus}</span>}
+                          {t.speedBonus  > 0 && <span className="text-xs" style={{ color: "#F97316" }}>💨+{t.speedBonus}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+
+            {/* 添加新模板 */}
+            {isAdmin && (() => {
+              const SLOT_ICONS_SEL = ["⚔️ " + (isZh ? "武器" : "Weapon"), "🎒 " + (isZh ? "背包" : "Bag"), "👟 " + (isZh ? "靴子" : "Boots")];
+              const RARITY_SEL = isZh ? ["普通","精良","稀有","传说"] : ["Common","Fine","Rare","Legendary"];
+              return (
+                <div className="p-4 rounded-xl" style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)" }}>
+                  <p className="text-xs font-bold mb-3" style={{ color: "#c2410c" }}>＋ {isZh ? "添加新模板" : "Add New Template"}</p>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <div>
+                      <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>{isZh ? "槽位" : "Slot"}</label>
+                      <select value={newTemplate.slot} onChange={e => setNewTemplate(t => ({ ...t, slot: Number(e.target.value) }))}
+                        className="w-full px-3 py-2 rounded-xl outline-none text-sm"
+                        style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }}>
+                        {SLOT_ICONS_SEL.map((s, i) => <option key={i} value={i}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>{isZh ? "稀有度" : "Rarity"}</label>
+                      <select value={newTemplate.rarity} onChange={e => setNewTemplate(t => ({ ...t, rarity: Number(e.target.value) }))}
+                        className="w-full px-3 py-2 rounded-xl outline-none text-sm"
+                        style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }}>
+                        {RARITY_SEL.map((r, i) => <option key={i} value={i}>{r}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="space-y-2 mb-2">
+                    <input value={newTemplate.name} onChange={e => setNewTemplate(t => ({ ...t, name: e.target.value }))}
+                      placeholder={isZh ? "名称（如：狩猎利爪）" : "Name (e.g. Hunting Claw)"}
+                      className="w-full px-3 py-2 rounded-xl outline-none text-sm"
+                      style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }} />
+                    <input value={newTemplate.lore} onChange={e => setNewTemplate(t => ({ ...t, lore: e.target.value }))}
+                      placeholder={isZh ? "Lore（可选）" : "Lore (optional)"}
+                      className="w-full px-3 py-2 rounded-xl outline-none text-sm"
+                      style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }} />
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 mb-3">
+                    {[
+                      { key: "rarityBonus" as const, label: isZh ? "🏆稀有加成" : "🏆Rarity" },
+                      { key: "safetyBonus" as const, label: isZh ? "🛡安全加成" : "🛡Safety" },
+                      { key: "carryBonus"  as const, label: isZh ? "🎒携带加成" : "🎒Carry" },
+                      { key: "speedBonus"  as const, label: isZh ? "💨速度加成" : "💨Speed" },
+                    ].map(({ key, label }) => (
+                      <div key={key}>
+                        <label className="text-xs block mb-1" style={{ color: "#b45309" }}>{label}</label>
+                        <input type="number" min="0" max="9999" value={newTemplate[key]}
+                          onChange={e => setNewTemplate(t => ({ ...t, [key]: Number(e.target.value) }))}
+                          className="w-full px-2 py-2 rounded-xl outline-none text-sm text-center"
+                          style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#F97316" }} />
+                      </div>
+                    ))}
+                  </div>
+                  {templateResult && (
+                    <p className="text-xs mb-2 font-semibold" style={{ color: templateResult.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{templateResult}</p>
+                  )}
+                  <button onClick={handleAddTemplate} disabled={addTemplateLoading || !newTemplate.name.trim()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white"
+                    style={{ background: (!newTemplate.name.trim() || addTemplateLoading) ? "rgba(249,115,22,0.3)" : "linear-gradient(135deg,#F97316,#ea580c)", cursor: (!newTemplate.name.trim() || addTemplateLoading) ? "default" : "pointer", opacity: addTemplateLoading ? 0.7 : 1 }}>
+                    {addTemplateLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                    {isZh ? "添加模板" : "Add Template"}
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
 

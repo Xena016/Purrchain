@@ -1,4 +1,4 @@
-﻿import { ethers } from "ethers";
+import { ethers } from "ethers";
 
 // ============================================================
 //  合约地址 — Avalanche Fuji 测试网 (chainId: 43113)
@@ -67,6 +67,12 @@ export const CAT_NFT_ABI = [
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function balanceOf(address owner) view returns (uint256)",
   "function totalSupply() view returns (uint256)",
+  // Collection Series 管理
+  "function addCollectionSeries(string calldata _name, string calldata _uri) external returns (uint32)",
+  "function setCollectionSeriesActive(uint32 _seriesId, bool _active) external",
+  "function seriesCount() view returns (uint32)",
+  "function getCollectionSeries(uint32 _seriesId) view returns (string name, string uri, bool active)",
+  "function getActiveSeriesIds() view returns (uint32[])",
 ] as const;
 
 export const PURR_TOKEN_ABI = [
@@ -79,7 +85,7 @@ export const PURR_TOKEN_ABI = [
 export const DONATION_VAULT_ABI = [
   "function donate(uint256 _realCatId) external payable",
   "function userCatDonation(address, uint256) view returns (uint256)",
-  "function remainingToNextStage(address _donor, uint256 _realCatId) view returns (uint256)",
+  "function remainingToNextMint(address _donor, uint256 _realCatId) view returns (uint256)",
   "function donationStage(address, uint256) view returns (uint8)",
   "function stageThreshold() view returns (uint256)",
 ] as const;
@@ -141,6 +147,8 @@ export const GAME_CONTRACT_ABI = [
   // 出猎参数
   "function huntDuration(uint256) view returns (uint256)",
   "function staminaCost(uint256) view returns (uint256)",
+  // 游戏配置（仅 Owner/Admin）
+  "function addEquipTemplate(uint8 rarity, uint8 slot, string calldata name, string calldata lore, uint16 rarityBonus, uint16 safetyBonus, uint16 carryBonus, uint16 speedBonus) external",
 ] as const;
 
 export const EQUIPMENT_NFT_ABI = [
@@ -148,6 +156,8 @@ export const EQUIPMENT_NFT_ABI = [
   "function getSlotEquipment(uint256 catTokenId, uint8 slot) view returns (uint256)",
   "function getEquipment(uint256 tokenId) view returns (tuple(uint8 slot, uint8 rarity, string name, string lore, uint16 rarityBonus, uint16 safetyBonus, uint16 carryBonus, uint16 speedBonus))",
   "function ownerOf(uint256 tokenId) view returns (address)",
+  "function balanceOf(address owner) view returns (uint256)",
+  "function totalSupply() view returns (uint256)",
 ] as const;
 
 // ============================================================

@@ -74,11 +74,16 @@ export function Dashboard() {
               }
             } catch { /* fallback */ }
           }
+          let shelterLocation = "";
+          try {
+            const shelterInfo = await c.catRegistry.shelters(cat.shelter) as { location: string };
+            shelterLocation = shelterInfo.location ?? "";
+          } catch { /* fallback */ }
           results.push({
             id: Number(cat.id), name: cat.name, age: Number(cat.age),
             gender: cat.gender === "female" ? "female" : "male",
             description: cat.description, stageURIs: uris,
-            shelter: cat.shelter, shelterLocation: "",
+            shelter: cat.shelter, shelterLocation,
             status: chainStatusToLocal(cat.status),
             image, stage, isOnChain: true,
           });
@@ -322,8 +327,10 @@ export function Dashboard() {
 
                       <div className="flex items-center gap-1.5 text-xs" style={{ color: "#b45309" }}>
                         <MapPin size={11} style={{ color: "#F97316" }} />
-                        <span className="truncate font-mono text-[10px]">
-                          {cat.shelter.slice(0, 8)}...{cat.shelter.slice(-4)}
+                        <span className="truncate text-[10px]" style={{ maxWidth: "140px" }}>
+                          {cat.shelterLocation
+                            ? cat.shelterLocation
+                            : `${cat.shelter.slice(0, 8)}...${cat.shelter.slice(-4)}`}
                         </span>
                       </div>
 

@@ -65,44 +65,120 @@ const ITEM_CONFIG: Record<HuntItem, { labelZh: string; labelEn: string; icon: st
 
 // ── 可爱小猫 SVG ──────────────────────────────────────────
 function CatSVG({ state }: { state: CatState }) {
+  const isHunting = state === "hunting";
   return (
-    <svg viewBox="0 0 120 130" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full drop-shadow-md">
-      <motion.path d="M85 110 Q112 88 106 68 Q100 48 88 58"
-        stroke="#E8956D" strokeWidth="8" strokeLinecap="round" fill="none"
-        animate={state === "idle" ? { d: ["M85 110 Q112 88 106 68 Q100 48 88 58","M85 110 Q118 92 110 70 Q100 46 86 56","M85 110 Q112 88 106 68 Q100 48 88 58"] } : {}}
-        transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }} />
-      <motion.ellipse cx="60" cy="95" rx="34" ry="27" fill="#FDDBA8"
-        animate={state === "idle" ? { ry: [27, 29, 27] } : {}}
-        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }} />
-      <ellipse cx="60" cy="100" rx="19" ry="15" fill="#FFF0D0" />
-      <circle cx="60" cy="57" r="27" fill="#FDDBA8" />
-      <polygon points="35,38 28,14 50,31" fill="#FDDBA8" />
-      <polygon points="85,38 92,14 70,31" fill="#FDDBA8" />
-      <polygon points="37,36 32,20 49,32" fill="#F4A0A0" />
-      <polygon points="83,36 88,20 71,32" fill="#F4A0A0" />
-      {state !== "hunting" ? (
+    <svg viewBox="0 0 140 155" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full drop-shadow-lg">
+      {/* 尾巴 */}
+      <motion.path
+        d="M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82"
+        stroke="#F5C49A" strokeWidth="10" strokeLinecap="round" fill="none"
+        animate={state === "idle" ? {
+          d: ["M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82",
+              "M98 128 C124 114 134 95 124 78 C116 66 100 70 98 80",
+              "M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82"]
+        } : {}}
+        transition={{ repeat: Infinity, duration: 2.8, ease: "easeInOut" }}
+      />
+      <motion.path
+        d="M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82"
+        stroke="#FDDCB5" strokeWidth="6" strokeLinecap="round" fill="none"
+        animate={state === "idle" ? {
+          d: ["M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82",
+              "M98 128 C124 114 134 95 124 78 C116 66 100 70 98 80",
+              "M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82"]
+        } : {}}
+        transition={{ repeat: Infinity, duration: 2.8, ease: "easeInOut" }}
+      />
+
+      {/* 身体 */}
+      <motion.ellipse cx="68" cy="108" rx="38" ry="32" fill="#F5C49A"
+        animate={state === "idle" ? { ry: [32, 34, 32] } : {}}
+        transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }}
+      />
+      {/* 身体高光 */}
+      <ellipse cx="55" cy="96" rx="14" ry="10" fill="#FDDCB5" opacity="0.6" transform="rotate(-20 55 96)" />
+      {/* 肚皮 */}
+      <ellipse cx="68" cy="114" rx="22" ry="17" fill="#FFF0DC" />
+      {/* 肚皮纹路 */}
+      <ellipse cx="68" cy="116" rx="12" ry="9" fill="#FFE4C4" opacity="0.5" />
+
+      {/* 前爪 */}
+      <ellipse cx="44" cy="136" rx="13" ry="8" fill="#F5C49A" />
+      <ellipse cx="92" cy="136" rx="13" ry="8" fill="#F5C49A" />
+      <ellipse cx="44" cy="136" rx="9" ry="5" fill="#FDDCB5" />
+      <ellipse cx="92" cy="136" rx="9" ry="5" fill="#FDDCB5" />
+      {/* 爪尖 */}
+      {[38,44,50].map((x,i) => <ellipse key={i} cx={x} cy={140} rx="1.8" ry="3" fill="#E8A878" opacity="0.7" />)}
+      {[86,92,98].map((x,i) => <ellipse key={i} cx={x} cy={140} rx="1.8" ry="3" fill="#E8A878" opacity="0.7" />)}
+
+      {/* 头部 */}
+      <circle cx="68" cy="62" r="32" fill="#F5C49A" />
+      {/* 头部高光 */}
+      <ellipse cx="57" cy="50" rx="12" ry="9" fill="#FDDCB5" opacity="0.55" transform="rotate(-15 57 50)" />
+
+      {/* 耳朵外层 */}
+      <path d="M40 42 L28 12 L56 34 Z" fill="#F5C49A" />
+      <path d="M96 42 L112 12 L84 34 Z" fill="#F5C49A" />
+      {/* 耳朵内层（粉色） */}
+      <path d="M42 40 L33 18 L54 34 Z" fill="#FFAABB" />
+      <path d="M94 40 L107 18 L86 34 Z" fill="#FFAABB" />
+      {/* 耳朵高光 */}
+      <path d="M42 38 L36 22 L51 33 Z" fill="#FFD0DA" opacity="0.6" />
+      <path d="M94 38 L105 22 L89 33 Z" fill="#FFD0DA" opacity="0.6" />
+
+      {/* 眼睛 */}
+      {!isHunting ? (
         <>
-          <motion.ellipse cx="47" cy="54" rx="6.5" ry="7.5" fill="#3D2B1F"
-            animate={{ ry: [7.5, 1.5, 7.5] }} transition={{ repeat: Infinity, duration: 4, times: [0, 0.05, 0.1], ease: "easeInOut" }} />
-          <motion.ellipse cx="73" cy="54" rx="6.5" ry="7.5" fill="#3D2B1F"
-            animate={{ ry: [7.5, 1.5, 7.5] }} transition={{ repeat: Infinity, duration: 4, times: [0, 0.05, 0.1], ease: "easeInOut" }} />
-          <circle cx="50" cy="51" r="2" fill="white" />
-          <circle cx="76" cy="51" r="2" fill="white" />
+          {/* 左眼 */}
+          <ellipse cx="53" cy="60" rx="8" ry="9" fill="#2C1810" />
+          <motion.ellipse cx="53" cy="60" rx="8" ry="9" fill="#2C1810"
+            animate={{ ry: [9, 1, 9] }}
+            transition={{ repeat: Infinity, duration: 4.5, times: [0, 0.03, 0.08], ease: "easeInOut" }}
+          />
+          <ellipse cx="53" cy="60" rx="5" ry="6" fill="#3D2515" />
+          <circle cx="55" cy="57" r="2.5" fill="white" />
+          <circle cx="50" cy="63" r="1" fill="white" opacity="0.4" />
+          {/* 右眼 */}
+          <motion.ellipse cx="83" cy="60" rx="8" ry="9" fill="#2C1810"
+            animate={{ ry: [9, 1, 9] }}
+            transition={{ repeat: Infinity, duration: 4.5, times: [0, 0.03, 0.08], ease: "easeInOut" }}
+          />
+          <ellipse cx="83" cy="60" rx="5" ry="6" fill="#3D2515" />
+          <circle cx="85" cy="57" r="2.5" fill="white" />
+          <circle cx="80" cy="63" r="1" fill="white" opacity="0.4" />
         </>
       ) : (
         <>
-          <ellipse cx="47" cy="54" rx="6.5" ry="4" fill="#3D2B1F" />
-          <ellipse cx="73" cy="54" rx="6.5" ry="4" fill="#3D2B1F" />
+          {/* 眯眼（探险状态）*/}
+          <path d="M46 60 Q53 55 60 60" stroke="#2C1810" strokeWidth="3" strokeLinecap="round" fill="none" />
+          <path d="M76 60 Q83 55 90 60" stroke="#2C1810" strokeWidth="3" strokeLinecap="round" fill="none" />
+          {/* 奋斗线 */}
+          <line x1="46" y1="54" x2="50" y2="58" stroke="#E8956D" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="90" y1="54" x2="86" y2="58" stroke="#E8956D" strokeWidth="1.5" strokeLinecap="round" />
         </>
       )}
-      <polygon points="60,63 56,69 64,69" fill="#F4A0A0" />
-      <path d="M56 69 Q60 73 64 69" stroke="#E8956D" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-      <line x1="18" y1="61" x2="50" y2="64" stroke="#E8956D" strokeWidth="1.2" strokeLinecap="round" />
-      <line x1="18" y1="67" x2="50" y2="67" stroke="#E8956D" strokeWidth="1.2" strokeLinecap="round" />
-      <line x1="70" y1="64" x2="102" y2="61" stroke="#E8956D" strokeWidth="1.2" strokeLinecap="round" />
-      <line x1="70" y1="67" x2="102" y2="67" stroke="#E8956D" strokeWidth="1.2" strokeLinecap="round" />
-      <ellipse cx="38" cy="118" rx="11" ry="6.5" fill="#FDDBA8" />
-      <ellipse cx="82" cy="118" rx="11" ry="6.5" fill="#FDDBA8" />
+
+      {/* 鼻子 */}
+      <path d="M64 70 L68 67 L72 70 L68 73 Z" fill="#FF9CAD" />
+      {/* 嘴巴 */}
+      <path d="M64 73 Q68 78 72 73" stroke="#E8816A" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+      <path d="M68 73 L68 70" stroke="#E8816A" strokeWidth="1.5" strokeLinecap="round" />
+
+      {/* 腮红 */}
+      <ellipse cx="42" cy="68" rx="9" ry="6" fill="#FFB8C8" opacity="0.45" />
+      <ellipse cx="94" cy="68" rx="9" ry="6" fill="#FFB8C8" opacity="0.45" />
+
+      {/* 胡须 */}
+      <line x1="14" y1="66" x2="48" y2="69" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.8" />
+      <line x1="14" y1="72" x2="48" y2="72" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.8" />
+      <line x1="14" y1="78" x2="48" y2="75" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.6" />
+      <line x1="88" y1="69" x2="122" y2="66" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.8" />
+      <line x1="88" y1="72" x2="122" y2="72" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.8" />
+      <line x1="88" y1="75" x2="122" y2="78" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.6" />
+
+      {/* 头顶花纹（虎斑条） */}
+      <path d="M60 32 Q68 28 76 32" stroke="#E8A870" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.5" />
+      <path d="M58 38 Q68 33 78 38" stroke="#E8A870" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.35" />
     </svg>
   );
 }
@@ -111,64 +187,178 @@ function CatSVG({ state }: { state: CatState }) {
 function CozyRoom({ catState, catName, isZh }: { catState: CatState; catName: string; isZh: boolean }) {
   return (
     <div className="relative w-full h-full overflow-hidden rounded-2xl select-none"
-      style={{ background: "linear-gradient(180deg, #FFF5E6 0%, #FDECD2 60%, #F9D5A7 100%)" }}>
-      {/* 窗户 */}
-      <div className="absolute top-5 left-5 w-28 h-20 rounded-xl overflow-hidden"
-        style={{ border: "3px solid #E8B87A", background: "linear-gradient(180deg, #B8D8F0 0%, #E8F4FF 60%, #C8E8C0 100%)" }}>
-        <div className="absolute top-3 left-5 w-5 h-5 rounded-full" style={{ background: "#FFFACD", boxShadow: "0 0 12px #FFD700", opacity: 0.9 }} />
-        {[{ x: 15, y: 4 }, { x: 55, y: 7 }, { x: 82, y: 3 }, { x: 38, y: 13 }].map((s, i) => (
-          <div key={i} className="absolute w-1 h-1 rounded-full" style={{ left: s.x, top: s.y, background: "white", opacity: 0.7 }} />
-        ))}
-        <div className="absolute inset-0" style={{ borderRight: "2px solid rgba(232,184,122,0.5)", left: "50%" }} />
-        <div className="absolute inset-0" style={{ borderBottom: "2px solid rgba(232,184,122,0.5)", top: "50%" }} />
+      style={{ background: "linear-gradient(170deg, #FEF3FF 0%, #FFF0E6 40%, #FFF8E8 100%)" }}>
+
+      {/* 背景墙纸花纹 */}
+      <svg className="absolute inset-0 w-full h-full" style={{ opacity: 0.06 }} xmlns="http://www.w3.org/2000/svg">
+        {Array.from({ length: 8 }).map((_, i) =>
+          Array.from({ length: 5 }).map((_, j) => (
+            <text key={`${i}-${j}`} x={i * 60 - 10} y={j * 70 + 40} fontSize="22" fill="#F97316">🐾</text>
+          ))
+        )}
+      </svg>
+
+      {/* 窗户 — 更精致 */}
+      <div className="absolute top-4 left-4 rounded-2xl overflow-hidden"
+        style={{ width: 108, height: 88, border: "3px solid #D4956A", background: "linear-gradient(160deg, #C8E8FF 0%, #E8F6FF 50%, #D4F0E8 100%)", boxShadow: "inset 0 2px 8px rgba(180,220,255,0.5), 0 4px 12px rgba(180,120,60,0.15)" }}>
+        {/* 太阳 */}
+        <motion.div className="absolute" style={{ top: 8, left: 14, width: 22, height: 22, borderRadius: "50%", background: "radial-gradient(circle, #FFFACD, #FFD700)", boxShadow: "0 0 16px 4px rgba(255,220,0,0.4)" }}
+          animate={{ scale: [1, 1.08, 1] }} transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }} />
+        {/* 云朵 */}
+        <div className="absolute" style={{ top: 10, right: 8, width: 36, height: 16, background: "white", borderRadius: 10, opacity: 0.85 }} />
+        <div className="absolute" style={{ top: 6, right: 14, width: 22, height: 18, background: "white", borderRadius: 12, opacity: 0.85 }} />
+        {/* 远山 */}
+        <div className="absolute bottom-0 left-0 right-0" style={{ height: 28, background: "linear-gradient(180deg, #A8D8A8 0%, #78C878 100%)", clipPath: "polygon(0 60%, 18% 20%, 35% 50%, 55% 10%, 75% 45%, 100% 25%, 100% 100%, 0 100%)" }} />
+        {/* 窗框 */}
+        <div className="absolute inset-0" style={{ borderRight: "2px solid rgba(180,120,60,0.4)", left: "50%" }} />
+        <div className="absolute inset-0" style={{ borderBottom: "2px solid rgba(180,120,60,0.4)", top: "50%" }} />
+        {/* 窗框圆角装饰 */}
+        <div className="absolute top-1 left-1 w-2 h-2 rounded-full" style={{ background: "rgba(255,200,100,0.5)" }} />
+        <div className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ background: "rgba(255,200,100,0.5)" }} />
       </div>
-      {/* 书架 */}
-      <div className="absolute top-4 right-4 w-20 rounded-lg p-1.5" style={{ background: "#D4956A", border: "2px solid #B8774A", minHeight: "56px" }}>
-        {[["#FF8FAB","#FFB347","#87CEEB"], ["#98D17A","#DDA0DD","#F0E68C"]].map((row, ri) => (
-          <div key={ri} className="flex items-end gap-0.5 mb-0.5">
-            {row.map((c, ci) => <div key={ci} className="rounded-sm" style={{ width: 5, height: 14 + ci * 2, background: c }} />)}
+
+      {/* 窗台小花盆 */}
+      <div className="absolute" style={{ top: 88, left: 12, display: "flex", gap: 6 }}>
+        {[{ stem: "#68C44A", flower: "#FF88AA", pot: "#D4724A" },
+          { stem: "#78D450", flower: "#FFD060", pot: "#E8845A" }].map((p, i) => (
+          <div key={i} className="relative flex flex-col items-center">
+            <div className="rounded-full" style={{ width: 12, height: 12, background: p.flower, boxShadow: `0 0 6px ${p.flower}88` }} />
+            <div style={{ width: 3, height: 8, background: p.stem }} />
+            <div style={{ width: 18, height: 10, background: p.pot, borderRadius: "0 0 5px 5px" }} />
           </div>
         ))}
-        <div className="absolute -top-2 right-1 text-sm">🐾</div>
       </div>
-      {/* 地板 */}
-      <div className="absolute bottom-0 left-0 right-0 h-20 rounded-b-2xl"
-        style={{ background: "linear-gradient(180deg, #F5C87A 0%, #E8A84A 100%)" }}>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="absolute top-0 bottom-0" style={{ left: `${i * 17}%`, width: 1, background: "rgba(200,120,40,0.12)" }} />
+
+      {/* 书架 — 更精致 */}
+      <div className="absolute top-3 right-3 rounded-xl overflow-hidden"
+        style={{ width: 78, background: "#C8784A", border: "2.5px solid #A85C30", boxShadow: "2px 4px 12px rgba(120,60,20,0.2)", padding: "6px 5px 4px" }}>
+        {/* 书架顶部装饰 */}
+        <div className="absolute -top-1 left-0 right-0 h-2 rounded-t-xl" style={{ background: "#B86A38" }} />
+        <div className="text-xs text-center mb-1" style={{ fontSize: 13 }}>🐾</div>
+        {[
+          ["#FF8FAB","#FF6B8A","#87CEEB","#60B4D8"],
+          ["#98D17A","#70BC50","#DDA0DD","#C87EC8"],
+          ["#F0E68C","#D8CA60","#FFB347","#E8952A"],
+        ].map((row, ri) => (
+          <div key={ri} className="flex items-end gap-0.5 mb-1">
+            {row.map((c, ci) => (
+              <div key={ci} className="rounded-sm" style={{ width: 14, height: 16 + (ci % 3) * 3, background: c, boxShadow: `inset -1px 0 0 rgba(0,0,0,0.1)` }} />
+            ))}
+          </div>
+        ))}
+        {/* 小摆件 */}
+        <div className="flex justify-around mt-1">
+          <div style={{ fontSize: 11 }}>🏺</div>
+          <div style={{ fontSize: 11 }}>🪴</div>
+        </div>
+      </div>
+
+      {/* 地板 — 木地板纹理 */}
+      <div className="absolute bottom-0 left-0 right-0 h-24 rounded-b-2xl overflow-hidden"
+        style={{ background: "linear-gradient(180deg, #E8B86A 0%, #D4A050 40%, #C8944A 100%)" }}>
+        {/* 木地板横纹 */}
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="absolute left-0 right-0" style={{ top: i * 22, height: 1, background: "rgba(160,80,20,0.15)" }} />
+        ))}
+        {/* 木地板竖纹 */}
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="absolute top-0 bottom-0" style={{ left: `${i * 16}%`, width: 1, background: "rgba(160,80,20,0.1)" }} />
+        ))}
+        {/* 地板光泽 */}
+        <div className="absolute top-0 left-0 right-0 h-4" style={{ background: "linear-gradient(180deg, rgba(255,220,150,0.25), transparent)" }} />
+      </div>
+
+      {/* 小地毯 */}
+      <div className="absolute" style={{ bottom: 72, left: "50%", transform: "translateX(-50%)", width: 180, height: 44 }}>
+        {/* 地毯底层 */}
+        <div className="absolute inset-0 rounded-full" style={{ background: "linear-gradient(135deg, #FF9EBC, #FFD6A5, #FF9EBC)", boxShadow: "0 4px 16px rgba(255,120,140,0.25)" }} />
+        {/* 地毯内圈 */}
+        <div className="absolute" style={{ inset: "5px 15px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.4)" }} />
+        {/* 地毯花纹点 */}
+        {[30, 90, 150].map((x, i) => (
+          <div key={i} className="absolute rounded-full" style={{ left: x, top: "50%", transform: "translateY(-50%)", width: 6, height: 6, background: "rgba(255,255,255,0.5)" }} />
+        ))}
+        {/* 地毯边缘流苏 */}
+        {Array.from({ length: 12 }).map((_, i) => (
+          <div key={i} className="absolute bottom-0" style={{ left: `${8 + i * 7.5}%`, width: 2, height: 6, background: "#FF88AA", borderRadius: 1, opacity: 0.7 }} />
         ))}
       </div>
-      {/* 猫垫 */}
-      <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-36 h-10 rounded-full"
-        style={{ background: "linear-gradient(135deg, #FFBCBC, #FFD6A5)", border: "2px solid rgba(255,150,100,0.3)" }} />
-      {/* 猫咪 */}
-      <motion.div className="absolute bottom-14 left-1/2 -translate-x-1/2 w-28 h-32"
+
+      {/* 猫咪小屋（右下角装饰） */}
+      <div className="absolute" style={{ bottom: 60, right: 16 }}>
+        {/* 小屋屋顶 */}
+        <div style={{ width: 0, height: 0, borderLeft: "22px solid transparent", borderRight: "22px solid transparent", borderBottom: "18px solid #F97316", marginBottom: -1 }} />
+        {/* 小屋墙体 */}
+        <div className="rounded-sm" style={{ width: 44, height: 28, background: "#FFF0D8", border: "1.5px solid #E8A060", position: "relative" }}>
+          {/* 门 */}
+          <div className="absolute rounded-t-full" style={{ bottom: 0, left: "50%", transform: "translateX(-50%)", width: 12, height: 16, background: "#D4724A" }} />
+          {/* 窗 */}
+          <div className="absolute rounded-sm" style={{ top: 4, left: 4, width: 8, height: 8, background: "#B8D8F0", border: "1px solid #C8A870" }} />
+        </div>
+        <div className="text-center text-xs mt-0.5" style={{ color: "#c2410c", fontSize: 9, fontWeight: "bold" }}>HOME</div>
+      </div>
+
+      {/* 猫咪本体 */}
+      <motion.div className="absolute" style={{ bottom: 60, left: "50%", translateX: "-50%", width: 120, height: 140, x: "-50%" }}
         animate={
-          catState === "hunting"   ? { x: [0, -80, -400], opacity: [1, 1, 0] } :
-          catState === "returning" ? { x: [400, 80, 0], opacity: [0, 1, 1] } :
-          { y: [0, -6, 0] }
+          catState === "hunting"   ? { x: ["-50%", "-130%", "-600%"] as unknown as number[], opacity: [1, 1, 0] } :
+          catState === "returning" ? { x: ["600%", "30%", "-50%"] as unknown as number[], opacity: [0, 1, 1] } :
+          { y: [0, -7, 0] }
         }
         transition={
-          catState === "hunting" || catState === "returning" ? { duration: 1.5, ease: "easeInOut" } :
-          { repeat: Infinity, duration: 2.5, ease: "easeInOut" }
+          catState === "hunting" || catState === "returning"
+            ? { duration: 1.6, ease: [0.4, 0, 0.2, 1] }
+            : { repeat: Infinity, duration: 2.6, ease: "easeInOut" }
         }>
         <CatSVG state={catState} />
       </motion.div>
-      {/* 名牌 */}
-      <div className="absolute bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 rounded-full text-xs font-semibold"
-        style={{ background: "rgba(255,255,255,0.8)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.2)" }}>
-        {catState === "hunting"   ? (isZh ? "🏃 外出探险中" : "🏃 Exploring…") :
-         catState === "returning" ? (isZh ? "🎉 回来了！" : "🎉 Back!") :
-         `🐱 ${catName}`}
-      </div>
+
+      {/* 脚印动画（探险时） */}
       {catState === "hunting" && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center">
-            <div className="text-5xl mb-2">🌸</div>
-            <p className="text-sm font-semibold" style={{ color: "#c2410c" }}>{isZh ? "正在外出探险…" : "Out exploring…"}</p>
-          </div>
+        <motion.div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: [0, 1, 1, 0], scale: [0.8, 1, 1, 0.9] }}
+            transition={{ duration: 2, repeat: Infinity }}>
+            <div className="text-center">
+              <div className="text-4xl mb-2">🌿</div>
+              <div className="flex gap-2 justify-center mb-1">
+                {["🐾","🐾","🐾"].map((p, i) => (
+                  <motion.span key={i} style={{ fontSize: 16 }}
+                    animate={{ opacity: [0, 1, 0] }}
+                    transition={{ delay: i * 0.3, repeat: Infinity, duration: 1.2 }}>{p}</motion.span>
+                ))}
+              </div>
+              <p className="text-sm font-bold px-4 py-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.85)", color: "#c2410c", backdropFilter: "blur(4px)" }}>
+                {isZh ? "🏃 外出探险中…" : "🏃 Out exploring…"}
+              </p>
+            </div>
+          </motion.div>
         </motion.div>
+      )}
+
+      {/* 名牌 */}
+      <motion.div
+        className="absolute whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold"
+        style={{ bottom: 14, left: "50%", transform: "translateX(-50%)", background: "rgba(255,255,255,0.9)", color: "#c2410c", border: "1.5px solid rgba(249,115,22,0.25)", boxShadow: "0 2px 12px rgba(249,115,22,0.15)", backdropFilter: "blur(6px)" }}
+        animate={catState === "returning" ? { scale: [1, 1.15, 1] } : {}}
+        transition={{ duration: 0.5 }}>
+        {catState === "hunting"   ? (isZh ? "🏃 探险中…" : "🏃 Exploring…") :
+         catState === "returning" ? (isZh ? "🎉 回来啦！" : "🎉 Welcome back!") :
+         `✨ ${catName}`}
+      </motion.div>
+
+      {/* 归来时的礼花 */}
+      {catState === "returning" && (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {["🌟","⭐","✨","🎊","🎉"].map((star, i) => (
+            <motion.div key={i} className="absolute text-lg"
+              style={{ left: `${15 + i * 18}%`, top: "20%" }}
+              initial={{ y: 0, opacity: 0 }}
+              animate={{ y: [-10, -60, -20], opacity: [0, 1, 0], rotate: [0, 20, -10] }}
+              transition={{ delay: i * 0.15, duration: 1.2, repeat: 2 }}>
+              {star}
+            </motion.div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -256,9 +446,17 @@ export function Game() {
     setEquipsLoading(true);
     try {
       const c = getReadonlyContracts();
-      // equipmentNFT 没有 totalSupply，用 ownerOf 扫描前200
+      // 先用 balanceOf 获取数量，再用 totalSupply 限制扫描范围
+      const [balRaw, totalRaw] = await Promise.all([
+        c.equipmentNFT.balanceOf(walletAddress),
+        c.equipmentNFT.totalSupply().catch(() => 500n),
+      ]);
+      const balance = Number(balRaw);
+      const total   = Number(totalRaw);
       const found: EquipmentItem[] = [];
-      for (let i = 0; i < 200 && found.length < 50; i++) {
+      if (balance === 0) { setEquipments([]); return; }
+      // 从最新 tokenId 往前扫，命中 balance 个后停止
+      for (let i = total - 1; i >= 0 && found.length < balance; i--) {
         try {
           const owner = await c.equipmentNFT.ownerOf(i);
           if ((owner as string).toLowerCase() !== walletAddress.toLowerCase()) continue;
@@ -488,6 +686,18 @@ export function Game() {
   };
 
   // ── Loading / Error ──
+  if (!walletAddress) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ background: "#fffbf5" }}>
+      <Navbar />
+      <div className="text-5xl">🔐</div>
+      <p className="font-bold" style={{ color: "#92400e" }}>{isZh ? "请先连接钱包" : "Please connect your wallet"}</p>
+      <p className="text-sm" style={{ color: "#b45309" }}>{isZh ? "进入游戏前需要连接钱包" : "A wallet connection is required to play"}</p>
+      <button onClick={() => navigate("/dashboard")} className="px-5 py-2.5 rounded-xl text-white font-bold text-sm"
+        style={{ background: "linear-gradient(135deg,#F97316,#fbbf24)", cursor: "pointer" }}>
+        {isZh ? "返回" : "Back"}
+      </button>
+    </div>
+  );
   if (catLoading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "#fffbf5" }}>
       <Navbar /><Loader2 size={32} className="animate-spin" style={{ color: "#F97316" }} />
