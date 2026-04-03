@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, Zap, Package, ChevronRight, X, Clock, Trophy, Sparkles, Loader2, Plus, Sword, ShoppingBag as BagIcon, Wind } from "lucide-react";
+import { ArrowLeft, Zap, Package, ChevronRight, X, Clock, Trophy, Sparkles, Loader2, Plus, Sword, ShoppingBag as BagIcon, Wind, ZoomIn } from "lucide-react";
 import { Navbar } from "../components/Navbar";
 import { useApp } from "../context/AppContext";
-import { getReadonlyContracts, getContracts } from "../../lib/contracts";
+import { getReadonlyContracts, getContracts, ADDRESSES } from "../../lib/contracts";
 import { ethers } from "ethers";
 
 type HuntDuration = "short" | "medium" | "long";
 type HuntItem = "none" | "food" | "can";
-type CatState = "idle" | "hunting" | "returning";
+type CatState = "idle" | "hunting" | "returning" | "settling";
 
 interface HuntState {
   active: boolean;
@@ -18,13 +18,8 @@ interface HuntState {
   durationLabel: HuntDuration;
   item: HuntItem;
   useBooster: boolean;
-}
-
-interface Reward {
-  type: "collection";
-  name: string;
-  rarity: string;
-  icon: string;
+  catTokenId: number;   // 链上 NFT tokenId（非 catRegistry id）
+  chainStarted: boolean; // 是否已发起链上 startHunt
 }
 
 interface EquipmentItem {
@@ -36,6 +31,7 @@ interface EquipmentItem {
   rarityBonus: number;
   carryBonus: number;
   speedBonus: number;
+  image?: string; // 从 localStorage 管理员配置读取
 }
 
 interface CollectionNFT {
@@ -48,19 +44,57 @@ interface CollectionNFT {
 
 const RARITY_LABELS = ["普通", "精良", "稀有", "传说"];
 const RARITY_COLORS = ["#9CA3AF", "#34D399", "#60A5FA", "#FBBF24"];
-const SLOT_ICONS = ["⚔️", "🎒", "👟"];
+const SLOT_ICONS  = ["⚔️", "🎒", "👟"];
 const SLOT_LABELS = ["武器", "背包", "靴子"];
 
-const HUNT_CONFIG: Record<HuntDuration, { labelZh: string; labelEn: string; ms: number; stamina: number; fragments: [number, number] }> = {
-  short:  { labelZh: "短途 2h", labelEn: "Short 2h",  ms: 30_000,  stamina: 1, fragments: [1, 3]  },
-  medium: { labelZh: "中途 4h", labelEn: "Mid 4h",    ms: 60_000,  stamina: 2, fragments: [3, 8]  },
-  long:   { labelZh: "长途 8h", labelEn: "Long 8h",   ms: 120_000, stamina: 3, fragments: [10, 20] },
+// ── 碎片本地存储 helpers ───────────────────────────────────
+const FRAGS_KEY = (addr: string) => `purr_frags_${addr.toLowerCase()}`;
+function loadLocalFrags(addr: string): number {
+  try { return parseInt(localStorage.getItem(FRAGS_KEY(addr)) ?? "0") || 0; } catch { return 0; }
+}
+function saveLocalFrags(addr: string, n: number) {
+  try { localStorage.setItem(FRAGS_KEY(addr), String(Math.max(0, n))); } catch {}
+}
+
+// ── 装备图片本地配置 helpers ──────────────────────────────
+function getEquipImage(name: string, rarity: number, slot: number): string {
+  try {
+    const key = `equip_img_${name}_${rarity}_${slot}`;
+    return localStorage.getItem(key) ?? "";
+  } catch { return ""; }
+}
+
+// ── IPFS helper ───────────────────────────────────────────
+function ipfsToHttp(uri: string) {
+  if (!uri) return "";
+  return uri.startsWith("ipfs://") ? uri.replace("ipfs://", "https://ipfs.io/ipfs/") : uri;
+}
+
+// ── 出猎 localStorage key（带地址，防止多账号混用）─────────
+const HUNT_KEY = (catId: string | undefined, addr: string) =>
+  `hunt_${catId}_${addr.toLowerCase()}`;
+
+// ── 出猎配置 ─────────────────────────────────────────────
+// ms 是前端倒计时时长（演示用短时长，链上有真实时长）
+const HUNT_CONFIG: Record<HuntDuration, {
+  labelZh: string; labelEn: string;
+  durationIdx: number;  // 对应合约 HuntDuration enum: 0=Short 1=Mid 2=Long
+  stamina: number;
+  baseMaterials: [number, number]; // 链下估算范围，实际以链上为准
+}> = {
+  short:  { labelZh: "短途 2h", labelEn: "Short 2h",  durationIdx: 0, stamina: 1, baseMaterials: [1, 3]  },
+  medium: { labelZh: "中途 4h", labelEn: "Mid 4h",    durationIdx: 1, stamina: 2, baseMaterials: [3, 8]  },
+  long:   { labelZh: "长途 8h", labelEn: "Long 8h",   durationIdx: 2, stamina: 3, baseMaterials: [10, 20] },
 };
 
-const ITEM_CONFIG: Record<HuntItem, { labelZh: string; labelEn: string; icon: string; descZh: string; descEn: string; costPurr: number }> = {
-  none: { labelZh: "不携带", labelEn: "None",     icon: "🚫", descZh: "无 NFT 掉落",             descEn: "No NFT drop",              costPurr: 0  },
-  food: { labelZh: "猫粮",   labelEn: "Cat Food", icon: "🐟", descZh: "普通80% / 稀有15% / 珍稀5%", descEn: "80% Cmn/15% Rare/5% Epic",  costPurr: 5  },
-  can:  { labelZh: "罐罐",   labelEn: "Cat Can",  icon: "🥫", descZh: "普通50% / 稀有35% / 珍稀15%", descEn: "50% Cmn/35% Rare/15% Epic", costPurr: 15 },
+const ITEM_CONFIG: Record<HuntItem, {
+  labelZh: string; labelEn: string; icon: string;
+  descZh: string; descEn: string;
+  itemIdx: number;  // 合约 HuntItem enum: 0=None 1=Food 2=Can
+}> = {
+  none: { labelZh: "不携带", labelEn: "None",     icon: "🚫", descZh: "无 NFT 掉落",              descEn: "No NFT drop",              itemIdx: 0 },
+  food: { labelZh: "猫粮",   labelEn: "Cat Food", icon: "🐟", descZh: "普通80% / 稀有15% / 珍稀5%", descEn: "80% Cmn/15% Rare/5% Epic",  itemIdx: 1 },
+  can:  { labelZh: "罐罐",   labelEn: "Cat Can",  icon: "🥫", descZh: "普通50% / 稀有35% / 珍稀15%", descEn: "50% Cmn/35% Rare/15% Epic", itemIdx: 2 },
 };
 
 // ── 可爱小猫 SVG ──────────────────────────────────────────
@@ -68,115 +102,46 @@ function CatSVG({ state }: { state: CatState }) {
   const isHunting = state === "hunting";
   return (
     <svg viewBox="0 0 140 155" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full drop-shadow-lg">
-      {/* 尾巴 */}
-      <motion.path
-        d="M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82"
-        stroke="#F5C49A" strokeWidth="10" strokeLinecap="round" fill="none"
-        animate={state === "idle" ? {
-          d: ["M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82",
-              "M98 128 C124 114 134 95 124 78 C116 66 100 70 98 80",
-              "M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82"]
-        } : {}}
-        transition={{ repeat: Infinity, duration: 2.8, ease: "easeInOut" }}
-      />
-      <motion.path
-        d="M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82"
-        stroke="#FDDCB5" strokeWidth="6" strokeLinecap="round" fill="none"
-        animate={state === "idle" ? {
-          d: ["M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82",
-              "M98 128 C124 114 134 95 124 78 C116 66 100 70 98 80",
-              "M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82"]
-        } : {}}
-        transition={{ repeat: Infinity, duration: 2.8, ease: "easeInOut" }}
-      />
-
-      {/* 身体 */}
-      <motion.ellipse cx="68" cy="108" rx="38" ry="32" fill="#F5C49A"
-        animate={state === "idle" ? { ry: [32, 34, 32] } : {}}
-        transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }}
-      />
-      {/* 身体高光 */}
+      <motion.path d="M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82" stroke="#F5C49A" strokeWidth="10" strokeLinecap="round" fill="none"
+        animate={state === "idle" ? { d: ["M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82","M98 128 C124 114 134 95 124 78 C116 66 100 70 98 80","M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82"] } : {}}
+        transition={{ repeat: Infinity, duration: 2.8, ease: "easeInOut" }} />
+      <motion.path d="M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82" stroke="#FDDCB5" strokeWidth="6" strokeLinecap="round" fill="none"
+        animate={state === "idle" ? { d: ["M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82","M98 128 C124 114 134 95 124 78 C116 66 100 70 98 80","M98 128 C120 118 128 100 120 84 C114 72 102 74 100 82"] } : {}}
+        transition={{ repeat: Infinity, duration: 2.8, ease: "easeInOut" }} />
+      <motion.ellipse cx="68" cy="108" rx="38" ry="32" fill="#F5C49A" animate={state === "idle" ? { ry: [32, 34, 32] } : {}} transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }} />
       <ellipse cx="55" cy="96" rx="14" ry="10" fill="#FDDCB5" opacity="0.6" transform="rotate(-20 55 96)" />
-      {/* 肚皮 */}
       <ellipse cx="68" cy="114" rx="22" ry="17" fill="#FFF0DC" />
-      {/* 肚皮纹路 */}
       <ellipse cx="68" cy="116" rx="12" ry="9" fill="#FFE4C4" opacity="0.5" />
-
-      {/* 前爪 */}
-      <ellipse cx="44" cy="136" rx="13" ry="8" fill="#F5C49A" />
-      <ellipse cx="92" cy="136" rx="13" ry="8" fill="#F5C49A" />
-      <ellipse cx="44" cy="136" rx="9" ry="5" fill="#FDDCB5" />
-      <ellipse cx="92" cy="136" rx="9" ry="5" fill="#FDDCB5" />
-      {/* 爪尖 */}
+      <ellipse cx="44" cy="136" rx="13" ry="8" fill="#F5C49A" /><ellipse cx="92" cy="136" rx="13" ry="8" fill="#F5C49A" />
+      <ellipse cx="44" cy="136" rx="9" ry="5" fill="#FDDCB5" /><ellipse cx="92" cy="136" rx="9" ry="5" fill="#FDDCB5" />
       {[38,44,50].map((x,i) => <ellipse key={i} cx={x} cy={140} rx="1.8" ry="3" fill="#E8A878" opacity="0.7" />)}
       {[86,92,98].map((x,i) => <ellipse key={i} cx={x} cy={140} rx="1.8" ry="3" fill="#E8A878" opacity="0.7" />)}
-
-      {/* 头部 */}
       <circle cx="68" cy="62" r="32" fill="#F5C49A" />
-      {/* 头部高光 */}
       <ellipse cx="57" cy="50" rx="12" ry="9" fill="#FDDCB5" opacity="0.55" transform="rotate(-15 57 50)" />
-
-      {/* 耳朵外层 */}
-      <path d="M40 42 L28 12 L56 34 Z" fill="#F5C49A" />
-      <path d="M96 42 L112 12 L84 34 Z" fill="#F5C49A" />
-      {/* 耳朵内层（粉色） */}
-      <path d="M42 40 L33 18 L54 34 Z" fill="#FFAABB" />
-      <path d="M94 40 L107 18 L86 34 Z" fill="#FFAABB" />
-      {/* 耳朵高光 */}
-      <path d="M42 38 L36 22 L51 33 Z" fill="#FFD0DA" opacity="0.6" />
-      <path d="M94 38 L105 22 L89 33 Z" fill="#FFD0DA" opacity="0.6" />
-
-      {/* 眼睛 */}
-      {!isHunting ? (
-        <>
-          {/* 左眼 */}
-          <ellipse cx="53" cy="60" rx="8" ry="9" fill="#2C1810" />
-          <motion.ellipse cx="53" cy="60" rx="8" ry="9" fill="#2C1810"
-            animate={{ ry: [9, 1, 9] }}
-            transition={{ repeat: Infinity, duration: 4.5, times: [0, 0.03, 0.08], ease: "easeInOut" }}
-          />
-          <ellipse cx="53" cy="60" rx="5" ry="6" fill="#3D2515" />
-          <circle cx="55" cy="57" r="2.5" fill="white" />
-          <circle cx="50" cy="63" r="1" fill="white" opacity="0.4" />
-          {/* 右眼 */}
-          <motion.ellipse cx="83" cy="60" rx="8" ry="9" fill="#2C1810"
-            animate={{ ry: [9, 1, 9] }}
-            transition={{ repeat: Infinity, duration: 4.5, times: [0, 0.03, 0.08], ease: "easeInOut" }}
-          />
-          <ellipse cx="83" cy="60" rx="5" ry="6" fill="#3D2515" />
-          <circle cx="85" cy="57" r="2.5" fill="white" />
-          <circle cx="80" cy="63" r="1" fill="white" opacity="0.4" />
-        </>
-      ) : (
-        <>
-          {/* 眯眼（探险状态）*/}
-          <path d="M46 60 Q53 55 60 60" stroke="#2C1810" strokeWidth="3" strokeLinecap="round" fill="none" />
-          <path d="M76 60 Q83 55 90 60" stroke="#2C1810" strokeWidth="3" strokeLinecap="round" fill="none" />
-          {/* 奋斗线 */}
-          <line x1="46" y1="54" x2="50" y2="58" stroke="#E8956D" strokeWidth="1.5" strokeLinecap="round" />
-          <line x1="90" y1="54" x2="86" y2="58" stroke="#E8956D" strokeWidth="1.5" strokeLinecap="round" />
-        </>
-      )}
-
-      {/* 鼻子 */}
+      <path d="M40 42 L28 12 L56 34 Z" fill="#F5C49A" /><path d="M96 42 L112 12 L84 34 Z" fill="#F5C49A" />
+      <path d="M42 40 L33 18 L54 34 Z" fill="#FFAABB" /><path d="M94 40 L107 18 L86 34 Z" fill="#FFAABB" />
+      <path d="M42 38 L36 22 L51 33 Z" fill="#FFD0DA" opacity="0.6" /><path d="M94 38 L105 22 L89 33 Z" fill="#FFD0DA" opacity="0.6" />
+      {!isHunting ? (<>
+        <motion.ellipse cx="53" cy="60" rx="8" ry="9" fill="#2C1810" animate={{ ry: [9, 1, 9] }} transition={{ repeat: Infinity, duration: 4.5, times: [0, 0.03, 0.08], ease: "easeInOut" }} />
+        <ellipse cx="53" cy="60" rx="5" ry="6" fill="#3D2515" /><circle cx="55" cy="57" r="2.5" fill="white" /><circle cx="50" cy="63" r="1" fill="white" opacity="0.4" />
+        <motion.ellipse cx="83" cy="60" rx="8" ry="9" fill="#2C1810" animate={{ ry: [9, 1, 9] }} transition={{ repeat: Infinity, duration: 4.5, times: [0, 0.03, 0.08], ease: "easeInOut" }} />
+        <ellipse cx="83" cy="60" rx="5" ry="6" fill="#3D2515" /><circle cx="85" cy="57" r="2.5" fill="white" /><circle cx="80" cy="63" r="1" fill="white" opacity="0.4" />
+      </>) : (<>
+        <path d="M46 60 Q53 55 60 60" stroke="#2C1810" strokeWidth="3" strokeLinecap="round" fill="none" />
+        <path d="M76 60 Q83 55 90 60" stroke="#2C1810" strokeWidth="3" strokeLinecap="round" fill="none" />
+        <line x1="46" y1="54" x2="50" y2="58" stroke="#E8956D" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="90" y1="54" x2="86" y2="58" stroke="#E8956D" strokeWidth="1.5" strokeLinecap="round" />
+      </>)}
       <path d="M64 70 L68 67 L72 70 L68 73 Z" fill="#FF9CAD" />
-      {/* 嘴巴 */}
       <path d="M64 73 Q68 78 72 73" stroke="#E8816A" strokeWidth="1.8" fill="none" strokeLinecap="round" />
       <path d="M68 73 L68 70" stroke="#E8816A" strokeWidth="1.5" strokeLinecap="round" />
-
-      {/* 腮红 */}
-      <ellipse cx="42" cy="68" rx="9" ry="6" fill="#FFB8C8" opacity="0.45" />
-      <ellipse cx="94" cy="68" rx="9" ry="6" fill="#FFB8C8" opacity="0.45" />
-
-      {/* 胡须 */}
+      <ellipse cx="42" cy="68" rx="9" ry="6" fill="#FFB8C8" opacity="0.45" /><ellipse cx="94" cy="68" rx="9" ry="6" fill="#FFB8C8" opacity="0.45" />
       <line x1="14" y1="66" x2="48" y2="69" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.8" />
       <line x1="14" y1="72" x2="48" y2="72" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.8" />
       <line x1="14" y1="78" x2="48" y2="75" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.6" />
       <line x1="88" y1="69" x2="122" y2="66" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.8" />
       <line x1="88" y1="72" x2="122" y2="72" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.8" />
       <line x1="88" y1="75" x2="122" y2="78" stroke="#D4956A" strokeWidth="1.3" strokeLinecap="round" opacity="0.6" />
-
-      {/* 头顶花纹（虎斑条） */}
       <path d="M60 32 Q68 28 76 32" stroke="#E8A870" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.5" />
       <path d="M58 38 Q68 33 78 38" stroke="#E8A870" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.35" />
     </svg>
@@ -188,143 +153,59 @@ function CozyRoom({ catState, catName, isZh }: { catState: CatState; catName: st
   return (
     <div className="relative w-full h-full overflow-hidden rounded-2xl select-none"
       style={{ background: "linear-gradient(170deg, #FEF3FF 0%, #FFF0E6 40%, #FFF8E8 100%)" }}>
-
-      {/* 背景墙纸花纹 */}
       <svg className="absolute inset-0 w-full h-full" style={{ opacity: 0.06 }} xmlns="http://www.w3.org/2000/svg">
-        {Array.from({ length: 8 }).map((_, i) =>
-          Array.from({ length: 5 }).map((_, j) => (
-            <text key={`${i}-${j}`} x={i * 60 - 10} y={j * 70 + 40} fontSize="22" fill="#F97316">🐾</text>
-          ))
-        )}
+        {Array.from({ length: 8 }).map((_, i) => Array.from({ length: 5 }).map((_, j) => (
+          <text key={`${i}-${j}`} x={i * 60 - 10} y={j * 70 + 40} fontSize="22" fill="#F97316">🐾</text>
+        )))}
       </svg>
-
-      {/* 窗户 — 更精致 */}
       <div className="absolute top-4 left-4 rounded-2xl overflow-hidden"
         style={{ width: 108, height: 88, border: "3px solid #D4956A", background: "linear-gradient(160deg, #C8E8FF 0%, #E8F6FF 50%, #D4F0E8 100%)", boxShadow: "inset 0 2px 8px rgba(180,220,255,0.5), 0 4px 12px rgba(180,120,60,0.15)" }}>
-        {/* 太阳 */}
         <motion.div className="absolute" style={{ top: 8, left: 14, width: 22, height: 22, borderRadius: "50%", background: "radial-gradient(circle, #FFFACD, #FFD700)", boxShadow: "0 0 16px 4px rgba(255,220,0,0.4)" }}
           animate={{ scale: [1, 1.08, 1] }} transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }} />
-        {/* 云朵 */}
         <div className="absolute" style={{ top: 10, right: 8, width: 36, height: 16, background: "white", borderRadius: 10, opacity: 0.85 }} />
         <div className="absolute" style={{ top: 6, right: 14, width: 22, height: 18, background: "white", borderRadius: 12, opacity: 0.85 }} />
-        {/* 远山 */}
         <div className="absolute bottom-0 left-0 right-0" style={{ height: 28, background: "linear-gradient(180deg, #A8D8A8 0%, #78C878 100%)", clipPath: "polygon(0 60%, 18% 20%, 35% 50%, 55% 10%, 75% 45%, 100% 25%, 100% 100%, 0 100%)" }} />
-        {/* 窗框 */}
         <div className="absolute inset-0" style={{ borderRight: "2px solid rgba(180,120,60,0.4)", left: "50%" }} />
         <div className="absolute inset-0" style={{ borderBottom: "2px solid rgba(180,120,60,0.4)", top: "50%" }} />
-        {/* 窗框圆角装饰 */}
-        <div className="absolute top-1 left-1 w-2 h-2 rounded-full" style={{ background: "rgba(255,200,100,0.5)" }} />
-        <div className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ background: "rgba(255,200,100,0.5)" }} />
       </div>
-
-      {/* 窗台小花盆 */}
-      <div className="absolute" style={{ top: 88, left: 12, display: "flex", gap: 6 }}>
-        {[{ stem: "#68C44A", flower: "#FF88AA", pot: "#D4724A" },
-          { stem: "#78D450", flower: "#FFD060", pot: "#E8845A" }].map((p, i) => (
-          <div key={i} className="relative flex flex-col items-center">
-            <div className="rounded-full" style={{ width: 12, height: 12, background: p.flower, boxShadow: `0 0 6px ${p.flower}88` }} />
-            <div style={{ width: 3, height: 8, background: p.stem }} />
-            <div style={{ width: 18, height: 10, background: p.pot, borderRadius: "0 0 5px 5px" }} />
-          </div>
-        ))}
-      </div>
-
-      {/* 书架 — 更精致 */}
       <div className="absolute top-3 right-3 rounded-xl overflow-hidden"
         style={{ width: 78, background: "#C8784A", border: "2.5px solid #A85C30", boxShadow: "2px 4px 12px rgba(120,60,20,0.2)", padding: "6px 5px 4px" }}>
-        {/* 书架顶部装饰 */}
-        <div className="absolute -top-1 left-0 right-0 h-2 rounded-t-xl" style={{ background: "#B86A38" }} />
         <div className="text-xs text-center mb-1" style={{ fontSize: 13 }}>🐾</div>
-        {[
-          ["#FF8FAB","#FF6B8A","#87CEEB","#60B4D8"],
-          ["#98D17A","#70BC50","#DDA0DD","#C87EC8"],
-          ["#F0E68C","#D8CA60","#FFB347","#E8952A"],
-        ].map((row, ri) => (
+        {[["#FF8FAB","#FF6B8A","#87CEEB","#60B4D8"],["#98D17A","#70BC50","#DDA0DD","#C87EC8"],["#F0E68C","#D8CA60","#FFB347","#E8952A"]].map((row, ri) => (
           <div key={ri} className="flex items-end gap-0.5 mb-1">
-            {row.map((c, ci) => (
-              <div key={ci} className="rounded-sm" style={{ width: 14, height: 16 + (ci % 3) * 3, background: c, boxShadow: `inset -1px 0 0 rgba(0,0,0,0.1)` }} />
-            ))}
+            {row.map((c, ci) => (<div key={ci} className="rounded-sm" style={{ width: 14, height: 16 + (ci % 3) * 3, background: c }} />))}
           </div>
         ))}
-        {/* 小摆件 */}
-        <div className="flex justify-around mt-1">
-          <div style={{ fontSize: 11 }}>🏺</div>
-          <div style={{ fontSize: 11 }}>🪴</div>
-        </div>
       </div>
-
-      {/* 地板 — 木地板纹理 */}
       <div className="absolute bottom-0 left-0 right-0 h-24 rounded-b-2xl overflow-hidden"
         style={{ background: "linear-gradient(180deg, #E8B86A 0%, #D4A050 40%, #C8944A 100%)" }}>
-        {/* 木地板横纹 */}
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="absolute left-0 right-0" style={{ top: i * 22, height: 1, background: "rgba(160,80,20,0.15)" }} />
-        ))}
-        {/* 木地板竖纹 */}
-        {Array.from({ length: 7 }).map((_, i) => (
-          <div key={i} className="absolute top-0 bottom-0" style={{ left: `${i * 16}%`, width: 1, background: "rgba(160,80,20,0.1)" }} />
-        ))}
-        {/* 地板光泽 */}
-        <div className="absolute top-0 left-0 right-0 h-4" style={{ background: "linear-gradient(180deg, rgba(255,220,150,0.25), transparent)" }} />
+        {Array.from({ length: 4 }).map((_, i) => (<div key={i} className="absolute left-0 right-0" style={{ top: i * 22, height: 1, background: "rgba(160,80,20,0.15)" }} />))}
       </div>
-
-      {/* 小地毯 */}
       <div className="absolute" style={{ bottom: 72, left: "50%", transform: "translateX(-50%)", width: 180, height: 44 }}>
-        {/* 地毯底层 */}
         <div className="absolute inset-0 rounded-full" style={{ background: "linear-gradient(135deg, #FF9EBC, #FFD6A5, #FF9EBC)", boxShadow: "0 4px 16px rgba(255,120,140,0.25)" }} />
-        {/* 地毯内圈 */}
         <div className="absolute" style={{ inset: "5px 15px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.4)" }} />
-        {/* 地毯花纹点 */}
-        {[30, 90, 150].map((x, i) => (
-          <div key={i} className="absolute rounded-full" style={{ left: x, top: "50%", transform: "translateY(-50%)", width: 6, height: 6, background: "rgba(255,255,255,0.5)" }} />
-        ))}
-        {/* 地毯边缘流苏 */}
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} className="absolute bottom-0" style={{ left: `${8 + i * 7.5}%`, width: 2, height: 6, background: "#FF88AA", borderRadius: 1, opacity: 0.7 }} />
-        ))}
       </div>
-
-      {/* 猫咪小屋（右下角装饰） */}
-      <div className="absolute" style={{ bottom: 60, right: 16 }}>
-        {/* 小屋屋顶 */}
-        <div style={{ width: 0, height: 0, borderLeft: "22px solid transparent", borderRight: "22px solid transparent", borderBottom: "18px solid #F97316", marginBottom: -1 }} />
-        {/* 小屋墙体 */}
-        <div className="rounded-sm" style={{ width: 44, height: 28, background: "#FFF0D8", border: "1.5px solid #E8A060", position: "relative" }}>
-          {/* 门 */}
-          <div className="absolute rounded-t-full" style={{ bottom: 0, left: "50%", transform: "translateX(-50%)", width: 12, height: 16, background: "#D4724A" }} />
-          {/* 窗 */}
-          <div className="absolute rounded-sm" style={{ top: 4, left: 4, width: 8, height: 8, background: "#B8D8F0", border: "1px solid #C8A870" }} />
-        </div>
-        <div className="text-center text-xs mt-0.5" style={{ color: "#c2410c", fontSize: 9, fontWeight: "bold" }}>HOME</div>
-      </div>
-
-      {/* 猫咪本体 */}
       <motion.div className="absolute" style={{ bottom: 60, left: "50%", translateX: "-50%", width: 120, height: 140, x: "-50%" }}
         animate={
           catState === "hunting"   ? { x: ["-50%", "-130%", "-600%"] as unknown as number[], opacity: [1, 1, 0] } :
           catState === "returning" ? { x: ["600%", "30%", "-50%"] as unknown as number[], opacity: [0, 1, 1] } :
+          catState === "settling"  ? { y: [0, -8, 0] } :
           { y: [0, -7, 0] }
         }
         transition={
-          catState === "hunting" || catState === "returning"
-            ? { duration: 1.6, ease: [0.4, 0, 0.2, 1] }
-            : { repeat: Infinity, duration: 2.6, ease: "easeInOut" }
+          catState === "hunting" || catState === "returning" ? { duration: 1.6, ease: [0.4, 0, 0.2, 1] } :
+          { repeat: Infinity, duration: 2.6, ease: "easeInOut" }
         }>
-        <CatSVG state={catState} />
+        <CatSVG state={catState === "settling" ? "idle" : catState} />
       </motion.div>
-
-      {/* 脚印动画（探险时） */}
       {catState === "hunting" && (
         <motion.div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: [0, 1, 1, 0], scale: [0.8, 1, 1, 0.9] }}
-            transition={{ duration: 2, repeat: Infinity }}>
+          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: [0, 1, 1, 0], scale: [0.8, 1, 1, 0.9] }} transition={{ duration: 2, repeat: Infinity }}>
             <div className="text-center">
               <div className="text-4xl mb-2">🌿</div>
               <div className="flex gap-2 justify-center mb-1">
                 {["🐾","🐾","🐾"].map((p, i) => (
-                  <motion.span key={i} style={{ fontSize: 16 }}
-                    animate={{ opacity: [0, 1, 0] }}
-                    transition={{ delay: i * 0.3, repeat: Infinity, duration: 1.2 }}>{p}</motion.span>
+                  <motion.span key={i} style={{ fontSize: 16 }} animate={{ opacity: [0, 1, 0] }} transition={{ delay: i * 0.3, repeat: Infinity, duration: 1.2 }}>{p}</motion.span>
                 ))}
               </div>
               <p className="text-sm font-bold px-4 py-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.85)", color: "#c2410c", backdropFilter: "blur(4px)" }}>
@@ -334,29 +215,20 @@ function CozyRoom({ catState, catName, isZh }: { catState: CatState; catName: st
           </motion.div>
         </motion.div>
       )}
-
-      {/* 名牌 */}
-      <motion.div
-        className="absolute whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold"
+      <motion.div className="absolute whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold"
         style={{ bottom: 14, left: "50%", transform: "translateX(-50%)", background: "rgba(255,255,255,0.9)", color: "#c2410c", border: "1.5px solid rgba(249,115,22,0.25)", boxShadow: "0 2px 12px rgba(249,115,22,0.15)", backdropFilter: "blur(6px)" }}
-        animate={catState === "returning" ? { scale: [1, 1.15, 1] } : {}}
-        transition={{ duration: 0.5 }}>
+        animate={catState === "returning" ? { scale: [1, 1.15, 1] } : {}} transition={{ duration: 0.5 }}>
         {catState === "hunting"   ? (isZh ? "🏃 探险中…" : "🏃 Exploring…") :
          catState === "returning" ? (isZh ? "🎉 回来啦！" : "🎉 Welcome back!") :
+         catState === "settling"  ? (isZh ? "⏳ 结算中…" : "⏳ Settling…") :
          `✨ ${catName}`}
       </motion.div>
-
-      {/* 归来时的礼花 */}
       {catState === "returning" && (
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
           {["🌟","⭐","✨","🎊","🎉"].map((star, i) => (
-            <motion.div key={i} className="absolute text-lg"
-              style={{ left: `${15 + i * 18}%`, top: "20%" }}
-              initial={{ y: 0, opacity: 0 }}
-              animate={{ y: [-10, -60, -20], opacity: [0, 1, 0], rotate: [0, 20, -10] }}
-              transition={{ delay: i * 0.15, duration: 1.2, repeat: 2 }}>
-              {star}
-            </motion.div>
+            <motion.div key={i} className="absolute text-lg" style={{ left: `${15 + i * 18}%`, top: "20%" }}
+              initial={{ y: 0, opacity: 0 }} animate={{ y: [-10, -60, -20], opacity: [0, 1, 0], rotate: [0, 20, -10] }}
+              transition={{ delay: i * 0.15, duration: 1.2, repeat: 2 }}>{star}</motion.div>
           ))}
         </div>
       )}
@@ -372,12 +244,12 @@ export function Game() {
   const isZh = lang === "zh";
 
   // ── 猫咪数据 ──
-  const [cat, setCat]             = useState<{ id: number; name: string; image: string; stage: number } | null>(null);
+  const [cat, setCat]           = useState<{ id: number; name: string; image: string; stage: number; catTokenId: number | null } | null>(null);
   const [catLoading, setCatLoading] = useState(true);
   const [catError,   setCatError]   = useState<string | null>(null);
 
   useEffect(() => {
-    if (!catId) return;
+    if (!catId || !walletAddress) return;
     const load = async () => {
       setCatLoading(true); setCatError(null);
       try {
@@ -392,78 +264,127 @@ export function Game() {
         let image = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&q=80";
         if (firstUri) {
           try {
-            const httpUri = firstUri.startsWith("ipfs://") ? firstUri.replace("ipfs://", "https://ipfs.io/ipfs/") : firstUri;
-            const res = await fetch(httpUri, { signal: AbortSignal.timeout(5000) });
+            const res = await fetch(ipfsToHttp(firstUri), { signal: AbortSignal.timeout(5000) });
             const json = await res.json() as { image?: string };
-            if (json.image) image = json.image.startsWith("ipfs://") ? json.image.replace("ipfs://", "https://ipfs.io/ipfs/") : json.image;
+            if (json.image) image = ipfsToHttp(json.image);
           } catch { /* fallback */ }
         }
-        setCat({ id: Number(catId), name: raw.name, image, stage });
+
+        // 找用户持有的该猫 CatNFT tokenId（StarterCat or CloudAdopted or Genesis）
+        let catTokenId: number | null = null;
+        try {
+          const total = Number(await c.catNFT.totalSupply());
+          const bal   = Number(await c.catNFT.balanceOf(walletAddress));
+          if (bal > 0) {
+            for (let i = total - 1; i >= 0 && catTokenId === null; i--) {
+              try {
+                const owner = await c.catNFT.ownerOf(i);
+                if ((owner as string).toLowerCase() !== walletAddress.toLowerCase()) continue;
+                const info = await c.catNFT.nftInfo(i) as { nftType: bigint; linkedRealCatId: bigint };
+                const nType = Number(info.nftType);
+                if ((nType === 1 || nType === 2 || nType === 4) && Number(info.linkedRealCatId) === Number(catId)) {
+                  catTokenId = i;
+                }
+              } catch { /* skip */ }
+            }
+          }
+        } catch { /* ignore */ }
+
+        setCat({ id: Number(catId), name: raw.name, image, stage, catTokenId });
       } catch { setCatError(isZh ? "读取猫咪数据失败" : "Failed to load cat"); }
       finally { setCatLoading(false); }
     };
     load();
-  }, [catId, isZh]);
+  }, [catId, walletAddress, isZh]);
 
-  // ── 链上数据：体力、道具、碎片 ──
+  // ── 链上数据：体力、道具库存（链上购买，刷新从链上读）──
   const [stamina,      setStamina]      = useState(5);
   const [foodCount,    setFoodCount]    = useState(0);
   const [canCount,     setCanCount]     = useState(0);
   const [boosterCount, setBoosterCount] = useState(0);
-  const [fragments,    setFragments]    = useState(0);
   const [chainLoading, setChainLoading] = useState(false);
+
+  // ── 碎片：链下存储，以地址为 key ──
+  const [fragments, setFragments] = useState(0);
+  useEffect(() => {
+    if (walletAddress) setFragments(loadLocalFrags(walletAddress));
+  }, [walletAddress]);
+  const addFragments = useCallback((n: number) => {
+    if (!walletAddress) return;
+    const newVal = loadLocalFrags(walletAddress) + n;
+    saveLocalFrags(walletAddress, newVal);
+    setFragments(newVal);
+  }, [walletAddress]);
 
   const loadChainData = useCallback(async () => {
     if (!walletAddress) return;
     setChainLoading(true);
     try {
       const c = getReadonlyContracts();
-      const [st, food, can, boost, mat] = await Promise.all([
+      const [st, food, can, boost] = await Promise.all([
         c.gameContract.staminaOf(walletAddress),
         c.gameContract.foodBalance(walletAddress),
         c.gameContract.canBalance(walletAddress),
         c.gameContract.boosterBalance(walletAddress),
-        c.gameContract.materialBalance(walletAddress),
       ]);
       setStamina(Number(st));
       setFoodCount(Number(food));
       setCanCount(Number(can));
       setBoosterCount(Number(boost));
-      setFragments(Number(mat));
     } catch { /* ignore */ }
     finally { setChainLoading(false); }
   }, [walletAddress]);
 
   useEffect(() => { loadChainData(); }, [loadChainData]);
 
-  // ── 装备 NFT ──
+  // ── 装备 NFT（带图片）──
   const [equipments,    setEquipments]    = useState<EquipmentItem[]>([]);
   const [equipsLoading, setEquipsLoading] = useState(false);
-  const [selectedEquip, setSelectedEquip] = useState<Record<number, number | null>>({ 0: null, 1: null, 2: null });
+  const [zoomedEquip,   setZoomedEquip]   = useState<EquipmentItem | null>(null);
+
+  // 当前猫身上已装备的 tokenId（从链上读）
+  const [equippedSlots, setEquippedSlots] = useState<Record<number, number>>({});
 
   const loadEquipments = useCallback(async () => {
     if (!walletAddress) return;
     setEquipsLoading(true);
     try {
-      const c = getReadonlyContracts();
-      // 先用 balanceOf 获取数量，再用 totalSupply 限制扫描范围
-      const [balRaw, totalRaw] = await Promise.all([
-        c.equipmentNFT.balanceOf(walletAddress),
-        c.equipmentNFT.totalSupply().catch(() => 500n),
-      ]);
-      const balance = Number(balRaw);
-      const total   = Number(totalRaw);
-      const found: EquipmentItem[] = [];
-      if (balance === 0) { setEquipments([]); return; }
-      // 从最新 tokenId 往前扫，命中 balance 个后停止
-      for (let i = total - 1; i >= 0 && found.length < balance; i--) {
+      const c   = getReadonlyContracts();
+      const provider = new ethers.JsonRpcProvider("https://api.avax-test.network/ext/bc/C/rpc");
+      const balRaw   = await c.equipmentNFT.balanceOf(walletAddress);
+      const balance  = Number(balRaw);
+      if (balance === 0) { setEquipments([]); setEquipsLoading(false); return; }
+
+      // 用事件扫描代替逐 tokenId ownerOf（更快）
+      const sig    = ethers.id("EquipmentMinted(uint256,address,uint8,uint8)");
+      const latest = await provider.getBlockNumber();
+      const scanFrom = Math.max(0, latest - 200000);
+      const tokenIds: number[] = [];
+      for (let from = scanFrom; from <= latest; from += 2000) {
         try {
-          const owner = await c.equipmentNFT.ownerOf(i);
+          const logs = await provider.getLogs({
+            address: ADDRESSES.equipmentNFT,
+            topics: [sig, null, "0x" + walletAddress.slice(2).toLowerCase().padStart(64, "0")],
+            fromBlock: from,
+            toBlock: Math.min(from + 1999, latest),
+          });
+          for (const log of logs) {
+            const id = parseInt(log.topics[1], 16);
+            tokenIds.push(id);
+          }
+        } catch { /* skip batch */ }
+      }
+
+      const found: EquipmentItem[] = [];
+      for (const id of tokenIds) {
+        try {
+          const owner = await c.equipmentNFT.ownerOf(id);
           if ((owner as string).toLowerCase() !== walletAddress.toLowerCase()) continue;
-          const eq = await c.equipmentNFT.getEquipment(i);
+          const eq = await c.equipmentNFT.getEquipment(id);
           const e = eq as { slot: bigint; rarity: bigint; name: string; lore: string; rarityBonus: bigint; safetyBonus: bigint; carryBonus: bigint; speedBonus: bigint };
-          found.push({ tokenId: i, slot: Number(e.slot), rarity: Number(e.rarity), name: e.name, lore: e.lore, rarityBonus: Number(e.rarityBonus), carryBonus: Number(e.carryBonus), speedBonus: Number(e.speedBonus) });
-        } catch { /* not owned or burned */ }
+          const image = getEquipImage(e.name, Number(e.rarity), Number(e.slot));
+          found.push({ tokenId: id, slot: Number(e.slot), rarity: Number(e.rarity), name: e.name, lore: e.lore, rarityBonus: Number(e.rarityBonus), carryBonus: Number(e.carryBonus), speedBonus: Number(e.speedBonus), image });
+        } catch { /* skip */ }
       }
       setEquipments(found);
     } catch { /* ignore */ }
@@ -472,8 +393,25 @@ export function Game() {
 
   useEffect(() => { loadEquipments(); }, [loadEquipments]);
 
+  // 读取当前猫装备槽位
+  const loadEquippedSlots = useCallback(async () => {
+    if (!cat?.catTokenId) return;
+    try {
+      const c = getReadonlyContracts();
+      const MAX = BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+      const slots: Record<number, number> = {};
+      for (let s = 0; s <= 2; s++) {
+        const raw = await c.equipmentNFT.getSlotEquipment(cat.catTokenId, s);
+        if ((raw as bigint) !== MAX) slots[s] = Number(raw);
+      }
+      setEquippedSlots(slots);
+    } catch { /* ignore */ }
+  }, [cat?.catTokenId]);
+
+  useEffect(() => { loadEquippedSlots(); }, [loadEquippedSlots]);
+
   // ── 收藏 NFT ──
-  const [collections,    setCollections]    = useState<CollectionNFT[]>([]);
+  const [collections, setCollections] = useState<CollectionNFT[]>([]);
   const [colsLoading, setColsLoading] = useState(false);
 
   const loadCollections = useCallback(async () => {
@@ -492,12 +430,11 @@ export function Game() {
           let name = `Collection #${i}`, image = "", description = "";
           if (info.tokenURIValue) {
             try {
-              const url = info.tokenURIValue.startsWith("ipfs://") ? info.tokenURIValue.replace("ipfs://", "https://ipfs.io/ipfs/") : info.tokenURIValue;
-              const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+              const res = await fetch(ipfsToHttp(info.tokenURIValue), { signal: AbortSignal.timeout(6000) });
               const json = await res.json() as { name?: string; image?: string; description?: string };
               if (json.name) name = json.name;
               if (json.description) description = json.description;
-              if (json.image) image = json.image.startsWith("ipfs://") ? json.image.replace("ipfs://", "https://ipfs.io/ipfs/") : json.image;
+              if (json.image) image = ipfsToHttp(json.image);
             } catch { /* fallback */ }
           }
           found.push({ tokenId: i, name, image, description, seriesId: Number(info.seriesId) });
@@ -511,54 +448,51 @@ export function Game() {
   useEffect(() => { loadCollections(); }, [loadCollections]);
 
   // ── 出猎状态 ──
-  const [catState,        setCatState]        = useState<CatState>("idle");
-  const [hunt,            setHunt]            = useState<HuntState | null>(null);
-  const [timeLeft,        setTimeLeft]        = useState(0);
-  const [rewards,         setRewards]         = useState<Reward[]>([]);
-  const [rewardFragments, setRewardFragments] = useState(0);
-  const [showRewards,     setShowRewards]     = useState(false);
+  const [catState,    setCatState]    = useState<CatState>("idle");
+  const [hunt,        setHunt]        = useState<HuntState | null>(null);
+  const [timeLeft,    setTimeLeft]    = useState(0);
+  const [showSettle,  setShowSettle]  = useState(false);  // 倒计时结束，等待用户结算
+  const [settling,    setSettling]    = useState(false);  // 正在提交链上 settleHunt
+  const [settleResult, setSettleResult] = useState<{ materials: number; nftDropped: boolean; seriesId: number } | null>(null);
+  const [showRewards, setShowRewards] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── UI 状态 ──
   const [showHuntModal, setShowHuntModal] = useState(false);
-  const [huntConfig,    setHuntConfig]    = useState<{ duration: HuntDuration; item: HuntItem; booster: boolean }>({ duration: "short", item: "none", booster: false });
-  const [toast,         setToast]         = useState<string | null>(null);
+  const [huntConfig, setHuntConfig] = useState<{ duration: HuntDuration; item: HuntItem; booster: boolean; equip: Record<number, number | null> }>(
+    { duration: "short", item: "none", booster: false, equip: { 0: null, 1: null, 2: null } }
+  );
+  const [toast,         setToast]       = useState<string | null>(null);
   const [buyingStamina, setBuyingStamina] = useState(false);
   const [buyingItem,    setBuyingItem]    = useState<string | null>(null);
   const [activePanel,   setActivePanel]   = useState<"bag" | "frags" | "tips">("bag");
+  const [startingHunt,  setStartingHunt]  = useState(false);
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3500); };
 
   // ── 恢复出猎（退出再进）──
   useEffect(() => {
-    if (!catId) return;
-    const savedHunt = localStorage.getItem(`hunt_${catId}`);
+    if (!catId || !walletAddress) return;
+    const key = HUNT_KEY(catId, walletAddress);
+    const savedHunt = localStorage.getItem(key);
     if (!savedHunt) return;
     const h: HuntState = JSON.parse(savedHunt);
     if (!h.active) return;
     const elapsed = Date.now() - h.startTime;
     if (elapsed >= h.duration) {
+      // 倒计时已结束，显示结算按钮
       setCatState("returning");
       setHunt(null);
-      localStorage.removeItem(`hunt_${catId}`);
-      const savedRewards = localStorage.getItem(`rewards_${catId}`);
-      const savedFrags   = parseInt(localStorage.getItem(`reward_frags_${catId}`) || "0");
-      setTimeout(() => {
-        if (savedRewards) setRewards(JSON.parse(savedRewards));
-        setRewardFragments(savedFrags);
-        setShowRewards(true);
-        setCatState("idle");
-        localStorage.removeItem(`rewards_${catId}`);
-        localStorage.removeItem(`reward_frags_${catId}`);
-      }, 1500);
+      localStorage.removeItem(key);
+      setTimeout(() => { setCatState("settling"); setShowSettle(true); }, 1500);
     } else {
       setHunt(h);
       setCatState("hunting");
       setTimeLeft(Math.ceil((h.duration - elapsed) / 1000));
     }
-  }, [catId]);
+  }, [catId, walletAddress]);
 
-  // ── 出猎倒计时 ──
+  // ── 倒计时 ──
   useEffect(() => {
     if (hunt && catState === "hunting") {
       timerRef.current = setInterval(() => {
@@ -566,43 +500,18 @@ export function Game() {
         const remaining = hunt.duration - elapsed;
         if (remaining <= 0) {
           clearInterval(timerRef.current!);
+          const key = HUNT_KEY(catId, walletAddress ?? "");
+          localStorage.removeItem(key);
           setHunt(null);
-          localStorage.removeItem(`hunt_${catId}`);
           setCatState("returning");
-
-          const cfg = HUNT_CONFIG[hunt.durationLabel];
-          const fragCount = Math.floor(Math.random() * (cfg.fragments[1] - cfg.fragments[0] + 1)) + cfg.fragments[0];
-          const newRewards: Reward[] = [];
-          if (hunt.item !== "none") {
-            const roll = Math.random();
-            let rarity = "普通";
-            if (hunt.item === "can") { if (roll < 0.15) rarity = "珍稀"; else if (roll < 0.5) rarity = "稀有"; }
-            else { if (roll < 0.05) rarity = "珍稀"; else if (roll < 0.2) rarity = "稀有"; }
-            const options: Reward[] = [
-              { type: "collection", name: isZh ? "小猫玩耍" : "Cat Playing",   rarity: "普通", icon: "🐱" },
-              { type: "collection", name: isZh ? "小猫同伴" : "Cat Companion",  rarity: "稀有", icon: "😺" },
-              { type: "collection", name: isZh ? "小猫睡觉" : "Cat Sleeping",   rarity: "珍稀", icon: "😸" },
-            ].filter(n => n.rarity === rarity);
-            if (options.length) newRewards.push(options[Math.floor(Math.random() * options.length)]);
-          }
-          localStorage.setItem(`rewards_${catId}`, JSON.stringify(newRewards));
-          localStorage.setItem(`reward_frags_${catId}`, String(fragCount));
-          setTimeout(() => {
-            setRewards(newRewards);
-            setRewardFragments(fragCount);
-            setShowRewards(true);
-            setCatState("idle");
-            loadChainData();
-            loadCollections();
-            refreshBalance();
-            localStorage.removeItem(`rewards_${catId}`);
-            localStorage.removeItem(`reward_frags_${catId}`);
-          }, 1500);
-        } else { setTimeLeft(Math.ceil(remaining / 1000)); }
+          setTimeout(() => { setCatState("settling"); setShowSettle(true); }, 1500);
+        } else {
+          setTimeLeft(Math.ceil(remaining / 1000));
+        }
       }, 500);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [hunt, catState, catId, isZh, loadChainData, loadCollections, refreshBalance]);
+  }, [hunt, catState, catId, walletAddress]);
 
   const formatTime = (s: number) => {
     if (s <= 0) return "0s";
@@ -655,6 +564,7 @@ export function Game() {
       const c = getContracts(signer);
       const tx = await c.gameContract.equipItem(catTokenId, equipTokenId);
       await (tx as ethers.ContractTransactionResponse).wait();
+      await loadEquippedSlots();
       showToast(isZh ? "✅ 装备成功" : "✅ Equipped");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
@@ -662,27 +572,130 @@ export function Game() {
     }
   };
 
-  // ── 开始出猎 ──
-  const startHunt = () => {
-    const dur = HUNT_CONFIG[huntConfig.duration];
-    if (stamina < dur.stamina) return;
+  // ── 开始出猎（链上 startHunt → 存 localStorage）──
+  const doStartHunt = async () => {
+    if (!signer || !walletAddress || !cat) return;
+    const cfg = HUNT_CONFIG[huntConfig.duration];
+    if (stamina < cfg.stamina) return;
     if (huntConfig.item === "food" && foodCount < 1) { showToast(isZh ? "❌ 没有猫粮" : "❌ No cat food"); return; }
     if (huntConfig.item === "can"  && canCount  < 1) { showToast(isZh ? "❌ 没有罐罐" : "❌ No cat can"); return; }
     if (huntConfig.booster && boosterCount < 1) { showToast(isZh ? "❌ 没有加速符" : "❌ No booster"); return; }
 
-    let actualMs = dur.ms;
-    if (huntConfig.booster) actualMs = Math.max(actualMs * 0.5, dur.ms * 0.1);
-    const newHunt: HuntState = { active: true, startTime: Date.now(), duration: actualMs, durationLabel: huntConfig.duration, item: huntConfig.item, useBooster: huntConfig.booster };
-    setHunt(newHunt);
-    localStorage.setItem(`hunt_${catId}`, JSON.stringify(newHunt));
-    setCatState("hunting");
-    setTimeLeft(Math.ceil(actualMs / 1000));
+    // 需要 catTokenId 才能调用链上 startHunt
+    if (cat.catTokenId === null) {
+      showToast(isZh ? "❌ 找不到你持有的该猫 NFT" : "❌ Can't find your cat NFT"); return;
+    }
+
+    setStartingHunt(true);
     setShowHuntModal(false);
-    // 乐观更新（链上下次进来时同步）
-    setStamina(s => Math.max(0, s - dur.stamina));
-    if (huntConfig.item === "food") setFoodCount(c => Math.max(0, c - 1));
-    if (huntConfig.item === "can")  setCanCount(c => Math.max(0, c - 1));
-    if (huntConfig.booster) setBoosterCount(c => Math.max(0, c - 1));
+    try {
+      // 1. 如果选了装备，先链上 equip
+      for (const [slot, equipTokenId] of Object.entries(huntConfig.equip)) {
+        if (equipTokenId !== null) {
+          const currentlyEquipped = equippedSlots[Number(slot)];
+          if (currentlyEquipped !== equipTokenId) {
+            try {
+              const c = getContracts(signer);
+              const tx = await c.gameContract.equipItem(cat.catTokenId, equipTokenId);
+              await (tx as ethers.ContractTransactionResponse).wait();
+            } catch { /* 非致命，继续 */ }
+          }
+        }
+      }
+
+      // 2. 链上 startHunt（扣体力 + 道具）
+      const c = getContracts(signer);
+      const durationIdx = cfg.durationIdx;
+      const itemIdx     = ITEM_CONFIG[huntConfig.item].itemIdx;
+      const tx = await c.gameContract.startHunt(cat.catTokenId, durationIdx, itemIdx, huntConfig.booster);
+      const receipt = await (tx as ethers.ContractTransactionResponse).wait();
+
+      // 3. 从事件读取实际出猎时长
+      let effectiveDurationMs = cfg.durationIdx === 0 ? 2 * 3600 * 1000 :
+                                cfg.durationIdx === 1 ? 4 * 3600 * 1000 : 8 * 3600 * 1000;
+      if (receipt) {
+        for (const log of receipt.logs) {
+          try {
+            const iface = new ethers.Interface(["event HuntStarted(uint256 indexed catTokenId, uint8 duration, uint8 item, uint256 effectiveDuration)"]);
+            const parsed = iface.parseLog({ topics: log.topics as string[], data: log.data });
+            if (parsed) { effectiveDurationMs = Number(parsed.args[3]) * 1000; break; }
+          } catch { /* not this log */ }
+        }
+      }
+
+      // 4. 存 localStorage（以地址为 key）
+      const newHunt: HuntState = {
+        active: true,
+        startTime: Date.now(),
+        duration: effectiveDurationMs,
+        durationLabel: huntConfig.duration,
+        item: huntConfig.item,
+        useBooster: huntConfig.booster,
+        catTokenId: cat.catTokenId,
+        chainStarted: true,
+      };
+      localStorage.setItem(HUNT_KEY(catId, walletAddress), JSON.stringify(newHunt));
+      setHunt(newHunt);
+      setCatState("hunting");
+      setTimeLeft(Math.ceil(effectiveDurationMs / 1000));
+
+      // 5. 刷新链上数据（体力已被合约扣除）
+      await loadChainData();
+      refreshBalance();
+
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) showToast(isZh ? "❌ 出猎失败，请重试" : "❌ Failed to start hunt");
+    } finally { setStartingHunt(false); }
+  };
+
+  // ── 结算（链上 settleHunt）──
+  const doSettle = async () => {
+    if (!signer || !walletAddress || !cat?.catTokenId) return;
+    setSettling(true);
+    try {
+      const c = getContracts(signer);
+      const tx = await c.gameContract.settleHunt(cat.catTokenId);
+      const receipt = await (tx as ethers.ContractTransactionResponse).wait();
+
+      // 解析 HuntSettled 事件
+      let materials = 0, nftDropped = false, seriesId = 0;
+      if (receipt) {
+        for (const log of receipt.logs) {
+          try {
+            const iface = new ethers.Interface(["event HuntSettled(uint256 indexed catTokenId, uint256 materials, bool nftDropped, uint32 seriesId)"]);
+            const parsed = iface.parseLog({ topics: log.topics as string[], data: log.data });
+            if (parsed) {
+              materials   = Number(parsed.args[1]);
+              nftDropped  = Boolean(parsed.args[2]);
+              seriesId    = Number(parsed.args[3]);
+              break;
+            }
+          } catch { /* not this log */ }
+        }
+      }
+
+      // 碎片存到 localStorage
+      addFragments(materials);
+
+      setSettleResult({ materials, nftDropped, seriesId });
+      setShowSettle(false);
+      setShowRewards(true);
+      setCatState("idle");
+
+      // 刷新链上状态
+      await loadChainData();
+      if (nftDropped) await loadCollections();
+      refreshBalance();
+
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("not back yet")) {
+        showToast(isZh ? "⏰ 探险还未结束，请稍等" : "⏰ Not back yet, please wait");
+      } else if (!msg.includes("user rejected")) {
+        showToast(isZh ? "❌ 结算失败，请重试" : "❌ Settle failed, try again");
+      }
+    } finally { setSettling(false); }
   };
 
   // ── Loading / Error ──
@@ -691,7 +704,6 @@ export function Game() {
       <Navbar />
       <div className="text-5xl">🔐</div>
       <p className="font-bold" style={{ color: "#92400e" }}>{isZh ? "请先连接钱包" : "Please connect your wallet"}</p>
-      <p className="text-sm" style={{ color: "#b45309" }}>{isZh ? "进入游戏前需要连接钱包" : "A wallet connection is required to play"}</p>
       <button onClick={() => navigate("/dashboard")} className="px-5 py-2.5 rounded-xl text-white font-bold text-sm"
         style={{ background: "linear-gradient(135deg,#F97316,#fbbf24)", cursor: "pointer" }}>
         {isZh ? "返回" : "Back"}
@@ -716,6 +728,16 @@ export function Game() {
   );
 
   const dur = HUNT_CONFIG[huntConfig.duration];
+  const noNftWarning = cat.catTokenId === null;
+
+  // ── Series 名称映射（从已加载的 collections 推断）──
+  const getSeriesName = (id: number) => {
+    const found = collections.find(c => c.seriesId === id);
+    if (found) return found.name;
+    return id === 0 ? (isZh ? "小猫玩耍" : "Cat Playing") :
+           id === 1 ? (isZh ? "小猫同伴" : "Cat Companion") :
+                      (isZh ? "小猫睡觉" : "Cat Sleeping");
+  };
 
   return (
     <div className="min-h-screen" style={{ background: "#fffbf5", fontFamily: "'Nunito', sans-serif" }}>
@@ -726,11 +748,17 @@ export function Game() {
           <ArrowLeft size={15} />{isZh ? `返回 ${cat.name} 的档案` : `Back to ${cat.name}`}
         </button>
 
+        {/* ── 无 NFT 警告 ── */}
+        {noNftWarning && (
+          <div className="mb-4 p-3 rounded-xl text-sm" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#dc2626" }}>
+            ⚠️ {isZh ? "你还没有该猫咪的 NFT，请先在猫咪档案页领取或云领养后再进行探险。" : "You don't own an NFT for this cat. Please claim or cloud-adopt first."}
+          </div>
+        )}
+
         {/* ── 状态栏 ── */}
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl p-4 mb-5 flex flex-wrap gap-4 items-center justify-between"
           style={{ background: "white", border: "1px solid rgba(249,115,22,0.15)", boxShadow: "0 2px 12px rgba(249,115,22,0.06)" }}>
-          {/* 猫咪信息 */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0" style={{ border: "2px solid rgba(249,115,22,0.25)" }}>
               <img src={cat.image} alt={cat.name} className="w-full h-full object-cover" />
@@ -741,7 +769,7 @@ export function Game() {
             </div>
           </div>
 
-          {/* 体力 + 购买 */}
+          {/* 体力 */}
           <div className="flex items-center gap-2">
             <Zap size={14} style={{ color: "#F97316" }} />
             <span className="text-xs font-medium" style={{ color: "#b45309" }}>{isZh ? "体力" : "SP"}</span>
@@ -755,17 +783,12 @@ export function Game() {
             <button onClick={handleBuyStamina} disabled={stamina >= 5 || buyingStamina || !signer}
               title={isZh ? "花 8 PURR 购买 1 点体力" : "Buy 1 stamina for 8 PURR"}
               className="w-6 h-6 rounded-full flex items-center justify-center ml-0.5"
-              style={{
-                background: stamina < 5 && signer ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.05)",
-                border: "1px solid rgba(249,115,22,0.3)",
-                color: stamina < 5 && signer ? "#F97316" : "#d4a57a",
-                cursor: stamina < 5 && signer ? "pointer" : "default",
-              }}>
+              style={{ background: stamina < 5 && signer ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.3)", color: stamina < 5 && signer ? "#F97316" : "#d4a57a", cursor: stamina < 5 && signer ? "pointer" : "default" }}>
               {buyingStamina ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
             </button>
           </div>
 
-          {/* 碎片 */}
+          {/* 碎片（链下）*/}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
             style={{ background: "rgba(168,85,247,0.07)", border: "1px solid rgba(168,85,247,0.15)" }}>
             <Sparkles size={13} style={{ color: "#a855f7" }} />
@@ -793,24 +816,35 @@ export function Game() {
               )}
             </motion.div>
 
-            {/* 出猎按钮 */}
+            {/* 出猎 / 结算 按钮 */}
             <div className="mt-4">
-              <motion.button whileHover={{ scale: catState === "idle" && stamina > 0 ? 1.02 : 1 }} whileTap={{ scale: 0.98 }}
-                onClick={() => catState === "idle" && stamina > 0 && setShowHuntModal(true)}
-                disabled={catState !== "idle" || stamina === 0}
-                className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-black"
-                style={{
-                  background: catState !== "idle" || stamina === 0 ? "rgba(249,115,22,0.06)" : "linear-gradient(135deg,#F97316,#fbbf24)",
-                  color: catState !== "idle" || stamina === 0 ? "rgba(180,120,50,0.4)" : "white",
-                  cursor: catState !== "idle" || stamina === 0 ? "default" : "pointer",
-                  boxShadow: catState === "idle" && stamina > 0 ? "0 4px 20px rgba(249,115,22,0.3)" : "none",
-                  border: catState !== "idle" || stamina === 0 ? "1px solid rgba(249,115,22,0.1)" : "none",
-                }}>
-                {catState === "hunting"   ? <><Clock size={16} />{isZh ? "探险中…" : "Exploring…"}</> :
-                 catState === "returning" ? <><Trophy size={16} />{isZh ? "归来中…" : "Returning…"}</> :
-                 stamina === 0            ? (isZh ? "体力耗尽，点体力旁 + 购买" : "No stamina — buy via + button") :
-                 <><ChevronRight size={16} />{isZh ? "派出探险" : "Start Hunt"}</>}
-              </motion.button>
+              {catState === "settling" ? (
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={() => setShowSettle(true)}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-black text-white"
+                  style={{ background: "linear-gradient(135deg,#a855f7,#F97316)", boxShadow: "0 4px 20px rgba(168,85,247,0.3)", cursor: "pointer" }}>
+                  <Trophy size={16} />{isZh ? "🎉 点击结算战利品！" : "🎉 Claim your loot!"}
+                </motion.button>
+              ) : (
+                <motion.button whileHover={{ scale: catState === "idle" && stamina > 0 && !noNftWarning ? 1.02 : 1 }} whileTap={{ scale: 0.98 }}
+                  onClick={() => catState === "idle" && stamina > 0 && !noNftWarning && !startingHunt && setShowHuntModal(true)}
+                  disabled={catState !== "idle" || stamina === 0 || noNftWarning || startingHunt}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-black"
+                  style={{
+                    background: catState !== "idle" || stamina === 0 || noNftWarning || startingHunt ? "rgba(249,115,22,0.06)" : "linear-gradient(135deg,#F97316,#fbbf24)",
+                    color: catState !== "idle" || stamina === 0 || noNftWarning || startingHunt ? "rgba(180,120,50,0.4)" : "white",
+                    cursor: catState !== "idle" || stamina === 0 || noNftWarning || startingHunt ? "default" : "pointer",
+                    boxShadow: catState === "idle" && stamina > 0 && !noNftWarning && !startingHunt ? "0 4px 20px rgba(249,115,22,0.3)" : "none",
+                    border: catState !== "idle" || stamina === 0 || noNftWarning || startingHunt ? "1px solid rgba(249,115,22,0.1)" : "none",
+                  }}>
+                  {startingHunt      ? <><Loader2 size={16} className="animate-spin" />{isZh ? "发起链上交易…" : "Submitting tx…"}</> :
+                   catState === "hunting"  ? <><Clock size={16} />{isZh ? "探险中…" : "Exploring…"}</> :
+                   catState === "returning" ? <><Trophy size={16} />{isZh ? "归来中…" : "Returning…"}</> :
+                   stamina === 0     ? (isZh ? "体力耗尽，点体力旁 + 购买" : "No stamina — buy via + button") :
+                   noNftWarning      ? (isZh ? "需要持有该猫 NFT" : "Need cat NFT first") :
+                   <><ChevronRight size={16} />{isZh ? "派出探险" : "Start Hunt"}</>}
+                </motion.button>
+              )}
             </div>
 
             {/* ── 收藏 NFT ── */}
@@ -856,21 +890,15 @@ export function Game() {
 
           {/* ── 右：Tab 面板 ── */}
           <div className="flex flex-col gap-4">
-            {/* Tab 切换 */}
             <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(249,115,22,0.06)" }}>
               {([
-                { id: "bag"   as const, icon: <BagIcon size={12} />,   zh: "装备", en: "Gear"  },
-                { id: "frags" as const, icon: <Sparkles size={12} />,  zh: "碎片", en: "Frags" },
-                { id: "tips"  as const, icon: <span style={{ fontSize: 11 }}>💡</span>, zh: "提示", en: "Tips"  },
+                { id: "bag"   as const, icon: <BagIcon size={12} />,  zh: "装备", en: "Gear"  },
+                { id: "frags" as const, icon: <Sparkles size={12} />, zh: "碎片", en: "Frags" },
+                { id: "tips"  as const, icon: <span style={{ fontSize: 11 }}>💡</span>, zh: "提示", en: "Tips" },
               ]).map(t => (
                 <button key={t.id} onClick={() => setActivePanel(t.id)}
                   className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition-all"
-                  style={{
-                    background: activePanel === t.id ? "white" : "transparent",
-                    color: activePanel === t.id ? "#F97316" : "#b45309",
-                    cursor: "pointer",
-                    boxShadow: activePanel === t.id ? "0 1px 6px rgba(249,115,22,0.1)" : "none",
-                  }}>
+                  style={{ background: activePanel === t.id ? "white" : "transparent", color: activePanel === t.id ? "#F97316" : "#b45309", cursor: "pointer", boxShadow: activePanel === t.id ? "0 1px 6px rgba(249,115,22,0.1)" : "none" }}>
                   {t.icon}{isZh ? t.zh : t.en}
                 </button>
               ))}
@@ -896,32 +924,49 @@ export function Game() {
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-72 overflow-y-auto">
-                    {equipments.map(eq => (
-                      <div key={eq.tokenId} className="p-3 rounded-xl"
-                        style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.1)" }}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xl">{SLOT_ICONS[eq.slot]}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-bold truncate" style={{ color: "#92400e" }}>{eq.name}</span>
-                              <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
-                                style={{ background: `${RARITY_COLORS[eq.rarity]}18`, color: RARITY_COLORS[eq.rarity], border: `1px solid ${RARITY_COLORS[eq.rarity]}30`, fontSize: "10px" }}>
-                                {RARITY_LABELS[eq.rarity]}
-                              </span>
+                    {equipments.map(eq => {
+                      const isEquipped = Object.values(equippedSlots).includes(eq.tokenId);
+                      return (
+                        <div key={eq.tokenId}
+                          onClick={() => setZoomedEquip(eq)}
+                          className="p-3 rounded-xl cursor-pointer transition-all"
+                          style={{ background: isEquipped ? "rgba(52,211,153,0.06)" : "rgba(249,115,22,0.04)", border: `1px solid ${isEquipped ? "rgba(52,211,153,0.3)" : "rgba(249,115,22,0.1)"}` }}
+                          onMouseEnter={e => (e.currentTarget.style.borderColor = "rgba(249,115,22,0.3)")}
+                          onMouseLeave={e => (e.currentTarget.style.borderColor = isEquipped ? "rgba(52,211,153,0.3)" : "rgba(249,115,22,0.1)")}>
+                          <div className="flex items-center gap-2">
+                            {/* 装备图片缩略图 */}
+                            {eq.image ? (
+                              <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0" style={{ border: "1px solid rgba(249,115,22,0.15)" }}>
+                                <img src={ipfsToHttp(eq.image)} alt={eq.name} className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <span className="text-xl flex-shrink-0 w-10 text-center">{SLOT_ICONS[eq.slot]}</span>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-bold truncate" style={{ color: "#92400e" }}>{eq.name}</span>
+                                <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
+                                  style={{ background: `${RARITY_COLORS[eq.rarity]}18`, color: RARITY_COLORS[eq.rarity], border: `1px solid ${RARITY_COLORS[eq.rarity]}30`, fontSize: "10px" }}>
+                                  {RARITY_LABELS[eq.rarity]}
+                                </span>
+                                {isEquipped && <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ background: "rgba(52,211,153,0.12)", color: "#059669", fontSize: "10px" }}>✓ {isZh ? "已装备" : "On"}</span>}
+                              </div>
+                              <div className="text-xs" style={{ color: "#b45309" }}>{SLOT_LABELS[eq.slot]} #{eq.tokenId}</div>
                             </div>
-                            <div className="text-xs" style={{ color: "#b45309" }}>{SLOT_LABELS[eq.slot]} #{eq.tokenId}</div>
+                            <div className="flex items-center gap-1">
+                              <ZoomIn size={12} style={{ color: "#d97706" }} />
+                              {catState === "idle" && cat.catTokenId && !isEquipped && (
+                                <button onClick={e => { e.stopPropagation(); handleEquip(cat.catTokenId!, eq.tokenId); }}
+                                  className="flex-shrink-0 px-2 py-1 rounded-lg text-xs font-semibold ml-1"
+                                  style={{ background: "rgba(249,115,22,0.1)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.2)", cursor: "pointer" }}>
+                                  {isZh ? "装备" : "Equip"}
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          {catState === "idle" && (
-                            <button onClick={() => handleEquip(cat.id, eq.tokenId)}
-                              className="flex-shrink-0 px-2 py-1 rounded-lg text-xs font-semibold"
-                              style={{ background: "rgba(249,115,22,0.1)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.2)", cursor: "pointer" }}>
-                              {isZh ? "装备" : "Equip"}
-                            </button>
-                          )}
                         </div>
-                        {eq.lore && <p className="text-xs line-clamp-1 mt-0.5" style={{ color: "#d97706" }}>{eq.lore}</p>}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -936,10 +981,9 @@ export function Game() {
                 </div>
                 <div className="text-center py-2">
                   <div className="text-5xl font-black mb-1" style={{ color: "#a855f7" }}>{fragments}</div>
-                  <p className="text-xs mb-3" style={{ color: "#b45309" }}>{isZh ? "10 碎片 = 1 抽卡券" : "10 frags = 1 ticket"}</p>
+                  <p className="text-xs mb-3" style={{ color: "#b45309" }}>{isZh ? "10 碎片 = 1 抽卡券（合成在抽卡页）" : "10 frags = 1 ticket (merge on Gacha page)"}</p>
                   <div className="w-full bg-orange-50 rounded-full h-2 mb-4 overflow-hidden" style={{ border: "1px solid rgba(249,115,22,0.1)" }}>
-                    <div className="h-2 rounded-full transition-all"
-                      style={{ width: `${(fragments % 10) * 10}%`, background: "linear-gradient(90deg,#a855f7,#F97316)" }} />
+                    <div className="h-2 rounded-full transition-all" style={{ width: `${(fragments % 10) * 10}%`, background: "linear-gradient(90deg,#a855f7,#F97316)" }} />
                   </div>
                   <button onClick={() => navigate("/gacha")} className="w-full py-3 rounded-xl text-white text-sm font-bold"
                     style={{ background: "linear-gradient(135deg,#a855f7,#F97316)", cursor: "pointer", boxShadow: "0 4px 16px rgba(168,85,247,0.2)" }}>
@@ -954,24 +998,12 @@ export function Game() {
               <div className="rounded-2xl p-4" style={{ background: "white", border: "1px solid rgba(249,115,22,0.12)" }}>
                 <div className="text-sm font-bold mb-3" style={{ color: "#92400e" }}>💡 {isZh ? "游戏提示" : "Tips"}</div>
                 <ul className="space-y-2 text-xs" style={{ color: "#b45309" }}>
-                  <li className="flex items-start gap-2">
-                    <Zap size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} />
-                    <span>{isZh ? "体力每8小时自然恢复1点，可点 + 花8 PURR购买" : "Stamina restores 1/8h, or buy via + for 8 PURR"}</span>
-                  </li>
-                  <li className="flex items-start gap-2"><span className="flex-shrink-0">🐟</span><span>{isZh ? "携带猫粮或罐罐才能带回收藏系列 NFT" : "Need food/can to earn Collection NFTs"}</span></li>
-                  <li className="flex items-start gap-2">
-                    <Sword size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} />
-                    <span>{isZh ? "武器装备提高出猎 NFT 的稀有度" : "Weapon raises NFT rarity on hunts"}</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <BagIcon size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} />
-                    <span>{isZh ? "背包装备增加碎片产出量" : "Bag boosts fragment yield"}</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Wind size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} />
-                    <span>{isZh ? "靴子装备缩短探险时长" : "Boots shortens hunt duration"}</span>
-                  </li>
-                  <li className="flex items-start gap-2"><span className="flex-shrink-0">🎴</span><span>{isZh ? "装备 NFT 只能通过抽卡获得" : "Equipment NFTs only from gacha"}</span></li>
+                  <li className="flex items-start gap-2"><Zap size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} /><span>{isZh ? "体力每8小时自然恢复1点，可花8 PURR购买" : "Stamina restores 1/8h, or buy for 8 PURR"}</span></li>
+                  <li className="flex items-start gap-2"><span className="flex-shrink-0">🐟</span><span>{isZh ? "携带猫粮或罐罐必然带回收藏 NFT，区别是稀有度" : "Food/can guarantees a Collection NFT drop, differs in rarity"}</span></li>
+                  <li className="flex items-start gap-2"><Sword size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} /><span>{isZh ? "武器装备提高 NFT 稀有度概率" : "Weapon raises NFT rarity chance"}</span></li>
+                  <li className="flex items-start gap-2"><BagIcon size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} /><span>{isZh ? "背包装备增加碎片产出量" : "Bag boosts fragment yield"}</span></li>
+                  <li className="flex items-start gap-2"><Wind size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F97316" }} /><span>{isZh ? "靴子装备缩短探险时长" : "Boots shortens hunt duration"}</span></li>
+                  <li className="flex items-start gap-2"><span className="flex-shrink-0">⛓️</span><span>{isZh ? "出猎会发起链上交易扣除体力和道具，结束后需点击「结算」再次上链 mint NFT 和碎片" : "Hunt submits a tx for stamina/items. After return, click Settle to mint NFTs and record fragments on-chain"}</span></li>
                 </ul>
               </div>
             )}
@@ -979,7 +1011,7 @@ export function Game() {
         </div>
       </div>
 
-      {/* ── 出猎弹窗 ── */}
+      {/* ── 出猎配置弹窗 ── */}
       <AnimatePresence>
         {showHuntModal && (
           <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4"
@@ -1001,36 +1033,26 @@ export function Game() {
                   {(Object.entries(HUNT_CONFIG) as [HuntDuration, typeof HUNT_CONFIG[HuntDuration]][]).map(([key, val]) => (
                     <button key={key} onClick={() => setHuntConfig(c => ({ ...c, duration: key }))}
                       className="py-3 px-2 rounded-xl text-center transition-all"
-                      style={{
-                        background: huntConfig.duration === key ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.04)",
-                        border: huntConfig.duration === key ? "2px solid rgba(249,115,22,0.5)" : "1px solid rgba(249,115,22,0.12)",
-                        color: huntConfig.duration === key ? "#c2410c" : "#b45309", cursor: "pointer",
-                      }}>
+                      style={{ background: huntConfig.duration === key ? "rgba(249,115,22,0.15)" : "rgba(249,115,22,0.04)", border: huntConfig.duration === key ? "2px solid rgba(249,115,22,0.5)" : "1px solid rgba(249,115,22,0.12)", color: huntConfig.duration === key ? "#c2410c" : "#b45309", cursor: "pointer" }}>
                       <div className="text-xs font-bold">{isZh ? val.labelZh : val.labelEn}</div>
                       <div className="text-xs mt-0.5" style={{ color: "#F97316" }}>⚡{val.stamina}</div>
-                      <div className="text-xs" style={{ color: "#d97706" }}>+{val.fragments[0]}~{val.fragments[1]} {isZh ? "碎片" : "frags"}</div>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* 道具选择 + 购买 */}
+              {/* 道具选择 */}
               <div className="mb-5">
                 <label className="text-xs font-bold mb-2 block" style={{ color: "#b45309" }}>
-                  {isZh ? "携带道具（携带才能带回收藏 NFT）" : "Item (needed for Collection NFTs)"}
+                  {isZh ? "携带道具（携带猫粮/罐罐必然掉落 NFT）" : "Item (food/can = guaranteed NFT drop)"}
                 </label>
                 <div className="space-y-2">
                   {(Object.entries(ITEM_CONFIG) as [HuntItem, typeof ITEM_CONFIG[HuntItem]][]).map(([key, val]) => {
                     const count = key === "food" ? foodCount : key === "can" ? canCount : null;
                     const selected = huntConfig.item === key;
                     return (
-                      <div key={key}
-                        className="flex items-center gap-3 p-3 rounded-xl transition-all"
-                        style={{
-                          background: selected ? "rgba(249,115,22,0.1)" : "rgba(249,115,22,0.03)",
-                          border: selected ? "2px solid rgba(249,115,22,0.4)" : "1px solid rgba(249,115,22,0.1)",
-                          cursor: "pointer",
-                        }}
+                      <div key={key} className="flex items-center gap-3 p-3 rounded-xl transition-all"
+                        style={{ background: selected ? "rgba(249,115,22,0.1)" : "rgba(249,115,22,0.03)", border: selected ? "2px solid rgba(249,115,22,0.4)" : "1px solid rgba(249,115,22,0.1)", cursor: "pointer" }}
                         onClick={() => setHuntConfig(c => ({ ...c, item: key }))}>
                         <span className="text-2xl">{val.icon}</span>
                         <div className="flex-1">
@@ -1040,13 +1062,13 @@ export function Game() {
                           </div>
                           <div className="text-xs" style={{ color: "#b45309" }}>{isZh ? val.descZh : val.descEn}</div>
                         </div>
-                        {val.costPurr > 0 && count !== null && (
+                        {val.itemIdx > 0 && count !== null && (
                           <button onClick={e => { e.stopPropagation(); handleBuyItem(key as "food" | "can"); }}
                             disabled={!!buyingItem || !signer}
                             className="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
                             style={{ background: "rgba(249,115,22,0.12)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.25)", cursor: signer ? "pointer" : "default" }}>
                             {buyingItem === key ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
-                            {val.costPurr} PURR
+                            {key === "food" ? "5" : "15"} PURR
                           </button>
                         )}
                       </div>
@@ -1058,10 +1080,7 @@ export function Game() {
               {/* 加速符 */}
               <div className="mb-5">
                 <div className="flex items-center gap-3 p-3 rounded-xl transition-all"
-                  style={{
-                    background: huntConfig.booster ? "rgba(249,115,22,0.1)" : "rgba(249,115,22,0.03)",
-                    border: huntConfig.booster ? "2px solid rgba(249,115,22,0.4)" : "1px solid rgba(249,115,22,0.1)",
-                  }}>
+                  style={{ background: huntConfig.booster ? "rgba(249,115,22,0.1)" : "rgba(249,115,22,0.03)", border: huntConfig.booster ? "2px solid rgba(249,115,22,0.4)" : "1px solid rgba(249,115,22,0.1)" }}>
                   <div className="flex items-center gap-3 flex-1 cursor-pointer" onClick={() => setHuntConfig(c => ({ ...c, booster: !c.booster }))}>
                     <span className="text-2xl">⚡</span>
                     <div>
@@ -1072,8 +1091,7 @@ export function Game() {
                       <div className="text-xs" style={{ color: "#b45309" }}>10 PURR</div>
                     </div>
                   </div>
-                  <button onClick={e => { e.stopPropagation(); handleBuyItem("booster"); }}
-                    disabled={!!buyingItem || !signer}
+                  <button onClick={e => { e.stopPropagation(); handleBuyItem("booster"); }} disabled={!!buyingItem || !signer}
                     className="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"
                     style={{ background: "rgba(249,115,22,0.12)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.25)", cursor: signer ? "pointer" : "default" }}>
                     {buyingItem === "booster" ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
@@ -1082,26 +1100,27 @@ export function Game() {
                 </div>
               </div>
 
-              {/* 装备选择 */}
+              {/* 装备选择（出发前选，会自动上链 equip）*/}
               {equipments.length > 0 && (
                 <div className="mb-5">
                   <label className="text-xs font-bold mb-2 block" style={{ color: "#b45309" }}>
-                    ⚔️ {isZh ? "选择装备（点击选中/取消）" : "Equipment (click to toggle)"}
+                    ⚔️ {isZh ? "选择出猎装备（点击选中，出发时自动装备）" : "Equipment (click to select, auto-equip on departure)"}
                   </label>
                   <div className="space-y-1.5">
-                    {equipments.slice(0, 6).map(eq => {
-                      const isSel = selectedEquip[eq.slot] === eq.tokenId;
+                    {equipments.slice(0, 9).map(eq => {
+                      const isSel = huntConfig.equip[eq.slot] === eq.tokenId;
+                      const isAlreadyOn = equippedSlots[eq.slot] === eq.tokenId;
                       return (
                         <div key={eq.tokenId}
-                          onClick={() => setSelectedEquip(p => ({ ...p, [eq.slot]: isSel ? null : eq.tokenId }))}
+                          onClick={() => setHuntConfig(p => ({ ...p, equip: { ...p.equip, [eq.slot]: isSel ? null : eq.tokenId } }))}
                           className="flex items-center gap-2 p-2.5 rounded-xl cursor-pointer transition-all"
-                          style={{
-                            background: isSel ? "rgba(249,115,22,0.12)" : "rgba(249,115,22,0.03)",
-                            border: isSel ? "1px solid rgba(249,115,22,0.35)" : "1px solid rgba(249,115,22,0.08)",
-                          }}>
-                          <span>{SLOT_ICONS[eq.slot]}</span>
+                          style={{ background: isSel ? "rgba(249,115,22,0.12)" : "rgba(249,115,22,0.03)", border: isSel ? "1px solid rgba(249,115,22,0.35)" : "1px solid rgba(249,115,22,0.08)" }}>
+                          {eq.image
+                            ? <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0"><img src={ipfsToHttp(eq.image)} alt={eq.name} className="w-full h-full object-cover" /></div>
+                            : <span className="flex-shrink-0">{SLOT_ICONS[eq.slot]}</span>}
                           <span className="text-xs font-semibold flex-1 truncate" style={{ color: "#92400e" }}>{eq.name}</span>
-                          <span className="text-xs px-1.5 py-0.5 rounded-full"
+                          {isAlreadyOn && !isSel && <span className="text-xs px-1.5 rounded-full" style={{ background: "rgba(52,211,153,0.12)", color: "#059669", fontSize: "10px" }}>✓{isZh ? "已穿" : "On"}</span>}
+                          <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
                             style={{ background: `${RARITY_COLORS[eq.rarity]}18`, color: RARITY_COLORS[eq.rarity], fontSize: "10px" }}>
                             {RARITY_LABELS[eq.rarity]}
                           </span>
@@ -1112,33 +1131,58 @@ export function Game() {
                 </div>
               )}
 
-              {/* 总消耗 */}
+              {/* 总消耗提示 */}
               <div className="flex justify-between items-center mb-4 px-3 py-2.5 rounded-xl"
                 style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.12)" }}>
                 <span className="text-xs font-medium" style={{ color: "#b45309" }}>{isZh ? "总消耗" : "Total cost"}</span>
-                <span className="text-xs font-bold" style={{ color: "#c2410c" }}>
-                  ⚡{dur.stamina} + {ITEM_CONFIG[huntConfig.item].costPurr + (huntConfig.booster ? 10 : 0)} PURR
-                </span>
+                <span className="text-xs font-bold" style={{ color: "#c2410c" }}>⚡{dur.stamina} 体力 + 道具</span>
               </div>
 
-              <button onClick={startHunt} disabled={stamina < dur.stamina}
+              <button onClick={doStartHunt} disabled={stamina < dur.stamina || startingHunt}
                 className="w-full py-4 rounded-2xl font-black text-sm"
-                style={{
-                  background: stamina >= dur.stamina ? "linear-gradient(135deg,#F97316,#fbbf24)" : "rgba(249,115,22,0.08)",
-                  color: stamina >= dur.stamina ? "white" : "rgba(180,120,50,0.4)",
-                  cursor: stamina >= dur.stamina ? "pointer" : "default",
-                  boxShadow: stamina >= dur.stamina ? "0 4px 20px rgba(249,115,22,0.3)" : "none",
-                }}>
-                {stamina < dur.stamina ? (isZh ? "体力不足" : "Not enough stamina") : `🐾 ${isZh ? "出发探险！" : "Start Exploring!"}`}
+                style={{ background: stamina >= dur.stamina && !startingHunt ? "linear-gradient(135deg,#F97316,#fbbf24)" : "rgba(249,115,22,0.08)", color: stamina >= dur.stamina && !startingHunt ? "white" : "rgba(180,120,50,0.4)", cursor: stamina >= dur.stamina && !startingHunt ? "pointer" : "default", boxShadow: stamina >= dur.stamina && !startingHunt ? "0 4px 20px rgba(249,115,22,0.3)" : "none" }}>
+                {startingHunt ? <span className="flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" />{isZh ? "提交链上交易…" : "Submitting…"}</span> :
+                 stamina < dur.stamina ? (isZh ? "体力不足" : "Not enough stamina") :
+                 `🐾 ${isZh ? "出发探险！（链上扣体力）" : "Start Exploring! (on-chain)"}`}
               </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* ── 奖励弹窗 ── */}
+      {/* ── 结算弹窗 ── */}
       <AnimatePresence>
-        {showRewards && (
+        {showSettle && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(12px)" }}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", damping: 15 }}
+              className="w-full max-w-sm rounded-3xl p-6 text-center"
+              style={{ background: "#fffbf5", border: "1px solid rgba(168,85,247,0.3)", boxShadow: "0 20px 60px rgba(168,85,247,0.2)" }}>
+              <motion.div animate={{ rotate: [0, -10, 10, -5, 5, 0] }} transition={{ duration: 0.5 }} className="text-5xl mb-3">🎁</motion.div>
+              <h3 className="font-black text-lg mb-2" style={{ color: "#92400e" }}>{cat.name} {isZh ? "探险归来！" : "is back!"}</h3>
+              <p className="text-sm mb-5" style={{ color: "#b45309" }}>
+                {isZh ? "需要上链一次来确认战利品并 mint NFT" : "One tx needed to confirm loot & mint NFT"}
+              </p>
+              <button onClick={doSettle} disabled={settling}
+                className="w-full py-4 rounded-2xl text-white font-black text-sm flex items-center justify-center gap-2"
+                style={{ background: settling ? "rgba(168,85,247,0.3)" : "linear-gradient(135deg,#a855f7,#F97316)", cursor: settling ? "default" : "pointer", boxShadow: settling ? "none" : "0 4px 20px rgba(168,85,247,0.35)" }}>
+                {settling ? <><Loader2 size={16} className="animate-spin" />{isZh ? "链上结算中…" : "Settling on-chain…"}</> :
+                 <>⛓️ {isZh ? "确认结算（发起交易）" : "Confirm & Settle (1 tx)"}</>}
+              </button>
+              {!settling && (
+                <p className="text-xs mt-3" style={{ color: "#d97706" }}>
+                  {isZh ? "* 碎片和收藏 NFT 将在交易确认后到账" : "* Fragments & Collection NFT credited after tx confirms"}
+                </p>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 奖励结果弹窗 ── */}
+      <AnimatePresence>
+        {showRewards && settleResult && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
             style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(12px)" }}>
             <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }}
@@ -1146,39 +1190,98 @@ export function Game() {
               className="w-full max-w-sm rounded-3xl p-6 text-center"
               style={{ background: "#fffbf5", border: "1px solid rgba(249,115,22,0.25)", boxShadow: "0 20px 60px rgba(249,115,22,0.2)" }}>
               <motion.div animate={{ rotate: [0, -10, 10, -5, 5, 0] }} transition={{ duration: 0.5 }} className="text-5xl mb-3">🎉</motion.div>
-              <h3 className="font-black text-lg mb-1" style={{ color: "#92400e" }}>{cat.name} {isZh ? "回来了！" : "is back!"}</h3>
-              <p className="text-sm mb-4" style={{ color: "#b45309" }}>{isZh ? "带回了以下战利品" : "Loot collected!"}</p>
+              <h3 className="font-black text-lg mb-1" style={{ color: "#92400e" }}>{isZh ? "战利品结算完成！" : "Loot settled!"}</h3>
+              <p className="text-sm mb-4" style={{ color: "#b45309" }}>{isZh ? "已上链记录，以下奖励已到账" : "On-chain confirmed! Rewards credited:"}</p>
               <div className="space-y-2 mb-5">
                 <div className="flex items-center justify-between px-4 py-2.5 rounded-xl"
                   style={{ background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.15)" }}>
                   <span className="text-sm font-semibold" style={{ color: "#92400e" }}>✨ {isZh ? "材料碎片" : "Fragments"}</span>
-                  <span className="text-sm font-black" style={{ color: "#a855f7" }}>+{rewardFragments}</span>
+                  <span className="text-sm font-black" style={{ color: "#a855f7" }}>+{settleResult.materials}</span>
                 </div>
-                {rewards.map((r, i) => (
-                  <motion.div key={i} initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: i * 0.15 }}
+                {settleResult.nftDropped ? (
+                  <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.15 }}
                     className="flex items-center justify-between px-4 py-2.5 rounded-xl"
                     style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.18)" }}>
-                    <span className="text-sm font-semibold" style={{ color: "#92400e" }}>{r.icon} {r.name} NFT</span>
+                    <span className="text-sm font-semibold" style={{ color: "#92400e" }}>🐾 {getSeriesName(settleResult.seriesId)} NFT</span>
                     <span className="text-xs px-2 py-0.5 rounded-full font-bold"
-                      style={{
-                        background: r.rarity === "珍稀" ? "rgba(245,158,11,0.15)" : r.rarity === "稀有" ? "rgba(96,165,250,0.15)" : "rgba(156,163,175,0.15)",
-                        color: r.rarity === "珍稀" ? "#d97706" : r.rarity === "稀有" ? "#3b82f6" : "#9CA3AF",
-                      }}>
-                      {r.rarity}
+                      style={{ background: settleResult.seriesId === 2 ? "rgba(245,158,11,0.15)" : settleResult.seriesId === 1 ? "rgba(96,165,250,0.15)" : "rgba(156,163,175,0.15)", color: settleResult.seriesId === 2 ? "#d97706" : settleResult.seriesId === 1 ? "#3b82f6" : "#9CA3AF" }}>
+                      {settleResult.seriesId === 2 ? (isZh ? "珍稀" : "Epic") : settleResult.seriesId === 1 ? (isZh ? "稀有" : "Rare") : (isZh ? "普通" : "Common")}
                     </span>
                   </motion.div>
-                ))}
-                {rewards.length === 0 && (
+                ) : (
                   <div className="px-4 py-2.5 rounded-xl text-sm" style={{ background: "rgba(249,115,22,0.04)", color: "#b45309" }}>
-                    {isZh ? "这次没有 NFT 掉落（未携带道具）" : "No NFT drop (no item brought)"}
+                    {isZh ? "本次未携带道具，无 NFT 掉落" : "No item brought, no NFT this time"}
                   </div>
                 )}
               </div>
-              <button onClick={() => { setShowRewards(false); loadChainData(); loadCollections(); }}
+              <button onClick={() => { setShowRewards(false); setSettleResult(null); }}
                 className="w-full py-3.5 rounded-2xl text-white font-black text-sm"
                 style={{ background: "linear-gradient(135deg,#F97316,#fbbf24)", cursor: "pointer", boxShadow: "0 4px 16px rgba(249,115,22,0.3)" }}>
                 {isZh ? "太棒了！继续冒险" : "Awesome! Keep exploring"}
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 装备放大弹窗 ── */}
+      <AnimatePresence>
+        {zoomedEquip && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(12px)" }}
+            onClick={() => setZoomedEquip(null)}>
+            <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ type: "spring", damping: 18 }}
+              className="w-full max-w-xs rounded-3xl overflow-hidden"
+              style={{ background: "#fffbf5", border: `2px solid ${RARITY_COLORS[zoomedEquip.rarity]}40`, boxShadow: `0 20px 60px ${RARITY_COLORS[zoomedEquip.rarity]}30` }}
+              onClick={e => e.stopPropagation()}>
+              {/* 图片区 */}
+              <div className="aspect-square w-full" style={{ background: `linear-gradient(135deg, ${RARITY_COLORS[zoomedEquip.rarity]}10, ${RARITY_COLORS[zoomedEquip.rarity]}20)` }}>
+                {zoomedEquip.image
+                  ? <img src={ipfsToHttp(zoomedEquip.image)} alt={zoomedEquip.name} className="w-full h-full object-contain p-4" />
+                  : <div className="w-full h-full flex items-center justify-center text-8xl">{SLOT_ICONS[zoomedEquip.slot]}</div>}
+              </div>
+              {/* 信息区 */}
+              <div className="p-5">
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="font-black text-lg" style={{ color: "#92400e" }}>{zoomedEquip.name}</h3>
+                  <button onClick={() => setZoomedEquip(null)} className="p-1 rounded-lg flex-shrink-0 ml-2" style={{ background: "rgba(249,115,22,0.08)", color: "#b45309", cursor: "pointer" }}><X size={14} /></button>
+                </div>
+                <div className="flex gap-2 mb-3 flex-wrap">
+                  <span className="text-xs px-2 py-1 rounded-full font-bold" style={{ background: `${RARITY_COLORS[zoomedEquip.rarity]}18`, color: RARITY_COLORS[zoomedEquip.rarity], border: `1px solid ${RARITY_COLORS[zoomedEquip.rarity]}40` }}>
+                    {RARITY_LABELS[zoomedEquip.rarity]}
+                  </span>
+                  <span className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(249,115,22,0.08)", color: "#c2410c", border: "1px solid rgba(249,115,22,0.2)" }}>
+                    {SLOT_ICONS[zoomedEquip.slot]} {SLOT_LABELS[zoomedEquip.slot]}
+                  </span>
+                  <span className="text-xs px-2 py-1 rounded-full font-mono" style={{ background: "rgba(249,115,22,0.04)", color: "#d97706" }}>#{zoomedEquip.tokenId}</span>
+                </div>
+                {zoomedEquip.lore && (
+                  <p className="text-xs italic mb-3 p-3 rounded-xl" style={{ color: "#b45309", background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.08)" }}>
+                    「{zoomedEquip.lore}」
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  {zoomedEquip.rarityBonus > 0 && (
+                    <div className="p-2 rounded-xl text-center" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                      <div className="text-xs" style={{ color: "#d97706" }}>🏆 {isZh ? "稀有加成" : "Rarity"}</div>
+                      <div className="text-sm font-black" style={{ color: "#FBBF24" }}>+{(zoomedEquip.rarityBonus / 100).toFixed(1)}%</div>
+                    </div>
+                  )}
+                  {zoomedEquip.carryBonus > 0 && (
+                    <div className="p-2 rounded-xl text-center" style={{ background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.2)" }}>
+                      <div className="text-xs" style={{ color: "#3b82f6" }}>🎒 {isZh ? "携带加成" : "Carry"}</div>
+                      <div className="text-sm font-black" style={{ color: "#60A5FA" }}>+{(zoomedEquip.carryBonus / 100).toFixed(1)}%</div>
+                    </div>
+                  )}
+                  {zoomedEquip.speedBonus > 0 && (
+                    <div className="p-2 rounded-xl text-center" style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)" }}>
+                      <div className="text-xs" style={{ color: "#10b981" }}>💨 {isZh ? "速度加成" : "Speed"}</div>
+                      <div className="text-sm font-black" style={{ color: "#34D399" }}>+{(zoomedEquip.speedBonus / 100).toFixed(1)}%</div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </motion.div>
           </div>
         )}
