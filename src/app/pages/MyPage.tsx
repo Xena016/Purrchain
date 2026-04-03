@@ -62,9 +62,15 @@ function DonationsPanel({ isZh }: { isZh: boolean }) {
     <div className="text-center py-16">
       <div className="text-5xl mb-4">💝</div>
       <p className="font-bold mb-2" style={{ color: "#92400e" }}>{isZh ? "暂无捐赠记录" : "No donations yet"}</p>
-      <p className="text-sm max-w-xs mx-auto" style={{ color: "#b45309" }}>
+      <p className="text-sm max-w-xs mx-auto mb-4" style={{ color: "#b45309" }}>
         {isZh ? "前往猫咪档案，为你心仪的猫咪捐款，记录将在这里展示" : "Visit the cat registry to donate. Records will appear here."}
       </p>
+      <button onClick={load} disabled={loading}
+        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold"
+        style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.2)", color: "#c2410c", cursor: "pointer" }}>
+        <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+        {isZh ? "重新读取" : "Retry"}
+      </button>
     </div>
   );
 

@@ -73,6 +73,8 @@ export const CAT_NFT_ABI = [
   "function seriesCount() view returns (uint32)",
   "function getCollectionSeries(uint32 _seriesId) view returns (string name, string uri, bool active)",
   "function getActiveSeriesIds() view returns (uint32[])",
+  // 合约配置（仅 Owner）
+  "function setAuthorizedMinter(address _minter, bool _status) external",
 ] as const;
 
 export const PURR_TOKEN_ABI = [
@@ -149,6 +151,8 @@ export const GAME_CONTRACT_ABI = [
   "function staminaCost(uint256) view returns (uint256)",
   // 游戏配置（仅 Owner/Admin）
   "function addEquipTemplate(uint8 rarity, uint8 slot, string calldata name, string calldata lore, uint16 rarityBonus, uint16 safetyBonus, uint16 carryBonus, uint16 speedBonus) external",
+  // 模板读取：public mapping getter，rarity(0-3) => index => EquipTemplate
+  "function equipTemplates(uint8 rarity, uint256 index) view returns (uint8 slot, uint8 rarity, string name, string lore, uint16 rarityBonus, uint16 safetyBonus, uint16 carryBonus, uint16 speedBonus)",
 ] as const;
 
 export const EQUIPMENT_NFT_ABI = [
@@ -158,6 +162,8 @@ export const EQUIPMENT_NFT_ABI = [
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function balanceOf(address owner) view returns (uint256)",
   "function totalSupply() view returns (uint256)",
+  // 合约配置（仅 Owner）
+  "function setGameContract(address _gameContract) external",
 ] as const;
 
 // ============================================================

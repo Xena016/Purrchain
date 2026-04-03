@@ -29,7 +29,7 @@ const GENDER_LABEL = {
 // ============================================================
 
 export function Dashboard() {
-  const { nftClaimed, welcomeClaimed, isConnected, lang, walletAddress } = useApp();
+  const { nftClaimed, welcomeClaimed, isConnected, lang, walletAddress, starterCatId } = useApp();
   const isZh = lang === "zh";
   const [showModal, setShowModal] = useState(isConnected && (!nftClaimed || !welcomeClaimed));
   const [search, setSearch] = useState("");
@@ -91,13 +91,14 @@ export function Dashboard() {
       }
       setCats(results);
 
-      // 查用户的云领养记录（donationMintCount > 0 的猫）
+      // 查用户的云领养记录：捐款过（userCatDonation > 0）或用来进入游戏的初始猫
       if (walletAddress) {
         const cloudIds = new Set<number>();
+        // 1. 捐款过的猫
         for (let i = 0; i < count; i++) {
           try {
-            const cnt = await c.donationVault.donationMintCount(walletAddress, i);
-            if (Number(cnt) > 0) cloudIds.add(i);
+            const donated = await c.donationVault.userCatDonation(walletAddress, i);
+            if ((donated as bigint) > 0n) cloudIds.add(i);
           } catch { /* skip */ }
         }
         setMyCloudCatIds(cloudIds);
@@ -110,6 +111,18 @@ export function Dashboard() {
   };
 
   useEffect(() => { loadCats(); }, []);
+
+  // 把「进入过游戏的初始猫」也归入云领养
+  useEffect(() => {
+    if (starterCatId !== null) {
+      setMyCloudCatIds(prev => {
+        if (prev.has(starterCatId)) return prev;
+        const next = new Set(prev);
+        next.add(starterCatId);
+        return next;
+      });
+    }
+  }, [starterCatId]);
 
   const filtered = cats.filter(cat => {
     const matchSearch = cat.name.toLowerCase().includes(search.toLowerCase()) ||

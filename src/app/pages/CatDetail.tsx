@@ -201,7 +201,7 @@ export function CatDetail() {
     c.donationVault.userCatDonation(walletAddress, catId)
       .then(v => setDonationTotal(parseFloat(ethers.formatEther(v as bigint)).toFixed(3)))
       .catch(() => {});
-    c.donationVault.remainingToNextStage(walletAddress, catId)
+    c.donationVault.remainingToNextMint(walletAddress, catId)
       .then(v => setRemainingToNext(parseFloat(ethers.formatEther(v as bigint)).toFixed(3)))
       .catch(() => {});
   }, [walletAddress, catId, cat]);
@@ -281,7 +281,7 @@ export function CatDetail() {
         const c2 = getReadonlyContracts();
         const [t, r, prevStage, newStage] = await Promise.all([
           c2.donationVault.userCatDonation(walletAddress!, catId),
-          c2.donationVault.remainingToNextStage(walletAddress!, catId),
+          c2.donationVault.remainingToNextMint(walletAddress!, catId),
           prevStagePromise,
           c2.donationVault.donationStage(walletAddress!, catId),
         ]);

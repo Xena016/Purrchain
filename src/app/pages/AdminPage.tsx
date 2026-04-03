@@ -56,16 +56,28 @@ export function AdminPage() {
 
   const [seriesList,        setSeriesList]        = useState<SeriesInfo[]>([]);
   const [seriesLoading,     setSeriesLoading]     = useState(false);
-  const [addSeriesName,     setAddSeriesName]     = useState("");
-  const [addSeriesUri,      setAddSeriesUri]      = useState("");
-  const [addSeriesLoading,  setAddSeriesLoading]  = useState(false);
-  const [seriesResult,      setSeriesResult]      = useState<string | null>(null);
+  const [addSeriesName,       setAddSeriesName]       = useState("");
+  const [addSeriesUri,        setAddSeriesUri]        = useState("");
+  const [addSeriesLoading,    setAddSeriesLoading]    = useState(false);
+  const [seriesResult,        setSeriesResult]        = useState<string | null>(null);
+  const [seriesUriPreview,    setSeriesUriPreview]    = useState<{ name?: string; image?: string; description?: string } | null>(null);
+  const [seriesUriPreviewing, setSeriesUriPreviewing] = useState(false);
+  const [seriesUriError,      setSeriesUriError]      = useState<string | null>(null);
 
   const [equipTemplates,        setEquipTemplates]        = useState<(EquipTemplate & { id: number })[]>([]);
   const [equipsLoading,         setEquipsLoading]         = useState(false);
   const [newTemplate,           setNewTemplate]           = useState<EquipTemplate>({ slot: 0, rarity: 0, name: "", lore: "", rarityBonus: 0, safetyBonus: 0, carryBonus: 0, speedBonus: 0 });
   const [addTemplateLoading,    setAddTemplateLoading]    = useState(false);
   const [templateResult,        setTemplateResult]        = useState<string | null>(null);
+
+  // ── 合约配置状态 ──
+  const [setGameContractAddr,    setSetGameContractAddr]    = useState("");
+  const [setGameContractLoading, setSetGameContractLoading] = useState(false);
+  const [setGameContractResult,  setSetGameContractResult]  = useState<string | null>(null);
+  const [setMinterAddr,          setSetMinterAddr]          = useState("");
+  const [setMinterStatus,        setSetMinterStatus]        = useState(true);
+  const [setMinterLoading,       setSetMinterLoading]       = useState(false);
+  const [setMinterResult,        setSetMinterResult]        = useState<string | null>(null);
 
   // localStorage key for caching scanned block range
   // key 包含合约地址，合约重部署后自动失效
@@ -182,33 +194,55 @@ export function AdminPage() {
 
   const loadEquipTemplates = useCallback(async () => {
     setEquipsLoading(true);
+    setEquipTemplates([]);
     try {
       const c = getReadonlyContracts();
-      const [balRaw, totalRaw] = await Promise.all([
-        c.equipmentNFT.totalSupply().catch(() => 0n),
-        c.equipmentNFT.totalSupply().catch(() => 0n),
-      ]);
-      // Scan last 50 equipment NFTs to infer template IDs used
-      const total = Number(totalRaw ?? balRaw ?? 0);
-      const templateIds = new Set<number>();
-      const limit = Math.min(total, 50);
-      for (let i = Math.max(0, total - limit); i < total; i++) {
-        try {
-          const eq = await c.equipmentNFT.getEquipment(i) as { slot: bigint; rarity: bigint; name: string; lore: string; rarityBonus: bigint; safetyBonus: bigint; carryBonus: bigint; speedBonus: bigint };
-          const key = `${Number(eq.slot)}_${Number(eq.rarity)}_${eq.name}`;
-          if (!templateIds.has(Number(eq.rarity) * 100 + Number(eq.slot))) {
-            templateIds.add(Number(eq.rarity) * 100 + Number(eq.slot));
-            setEquipTemplates(prev => {
-              const exists = prev.some(t => t.slot === Number(eq.slot) && t.rarity === Number(eq.rarity) && t.name === eq.name);
-              if (exists) return prev;
-              return [...prev, { id: i, slot: Number(eq.slot), rarity: Number(eq.rarity), name: eq.name, lore: eq.lore, rarityBonus: Number(eq.rarityBonus), safetyBonus: Number(eq.safetyBonus), carryBonus: Number(eq.carryBonus), speedBonus: Number(eq.speedBonus) }];
+      const all: (EquipTemplate & { id: number })[] = [];
+      // gameContract.equipTemplates is mapping(uint8 rarity => EquipTemplate[])
+      // public mapping auto-generates: equipTemplates(rarity, index) -> tuple
+      // No length getter exists, so we iterate until the call reverts
+      for (let rarity = 0; rarity <= 3; rarity++) {
+        for (let idx = 0; idx < 200; idx++) {
+          try {
+            const t = await c.gameContract.equipTemplates(rarity, idx) as {
+              slot: bigint; rarity: bigint; name: string; lore: string;
+              rarityBonus: bigint; safetyBonus: bigint; carryBonus: bigint; speedBonus: bigint;
+            };
+            all.push({
+              id: rarity * 1000 + idx,
+              slot: Number(t.slot), rarity: Number(t.rarity),
+              name: t.name, lore: t.lore,
+              rarityBonus: Number(t.rarityBonus), safetyBonus: Number(t.safetyBonus),
+              carryBonus: Number(t.carryBonus), speedBonus: Number(t.speedBonus),
             });
+          } catch {
+            break; // out-of-bounds → this rarity has no more templates
           }
-        } catch { /* skip */ }
+        }
       }
+      setEquipTemplates(all);
     } catch (e) { console.error("loadEquipTemplates:", e); }
     finally { setEquipsLoading(false); }
   }, []);
+
+  const previewSeriesUri = async (uri: string) => {
+    if (!uri.trim()) { setSeriesUriPreview(null); setSeriesUriError(null); return; }
+    setSeriesUriPreviewing(true); setSeriesUriError(null); setSeriesUriPreview(null);
+    try {
+      const url = uri.trim().startsWith("ipfs://")
+        ? uri.trim().replace("ipfs://", "https://ipfs.io/ipfs/")
+        : uri.trim();
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json() as { name?: string; image?: string; description?: string };
+      const image = json.image
+        ? (json.image.startsWith("ipfs://") ? json.image.replace("ipfs://", "https://ipfs.io/ipfs/") : json.image)
+        : undefined;
+      setSeriesUriPreview({ name: json.name, image, description: json.description });
+    } catch (e) {
+      setSeriesUriError(isZh ? `❌ 无法读取 URI：${e instanceof Error ? e.message : "未知错误"}` : `❌ Cannot fetch URI: ${e instanceof Error ? e.message : "unknown"}`);
+    } finally { setSeriesUriPreviewing(false); }
+  };
 
   const handleAddSeries = async () => {
     if (!signer || !isOwner) { setSeriesResult(isZh ? "⚠️ 仅 Owner 可添加系列" : "⚠️ Owner only"); return; }
@@ -262,6 +296,45 @@ export function AdminPage() {
       const msg = err instanceof Error ? err.message : "";
       if (!msg.includes("user rejected")) setTemplateResult(isZh ? `❌ 失败：${msg.slice(0, 80)}` : `❌ Failed: ${msg.slice(0, 80)}`);
     } finally { setAddTemplateLoading(false); }
+  };
+
+  const handleSetGameContract = async () => {
+    if (!signer || !isOwner) { setSetGameContractResult(isZh ? "⚠️ 仅 Owner 可操作" : "⚠️ Owner only"); return; }
+    if (!setGameContractAddr.trim() || !ethers.isAddress(setGameContractAddr.trim())) {
+      setSetGameContractResult(isZh ? "❌ 请输入有效的合约地址" : "❌ Enter a valid address");
+      return;
+    }
+    setSetGameContractLoading(true); setSetGameContractResult(null);
+    try {
+      const c = getContracts(signer);
+      const tx = await c.equipmentNFT.setGameContract(setGameContractAddr.trim());
+      await (tx as ethers.ContractTransactionResponse).wait();
+      setSetGameContractResult(isZh ? `✅ EquipmentNFT.gameContract 已设为 ${setGameContractAddr.slice(0,10)}...` : `✅ gameContract set to ${setGameContractAddr.slice(0,10)}...`);
+      setSetGameContractAddr("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setSetGameContractResult(isZh ? `❌ 失败：${msg.slice(0,80)}` : `❌ Failed: ${msg.slice(0,80)}`);
+    } finally { setSetGameContractLoading(false); }
+  };
+
+  const handleSetMinter = async () => {
+    if (!signer || !isOwner) { setSetMinterResult(isZh ? "⚠️ 仅 Owner 可操作" : "⚠️ Owner only"); return; }
+    if (!setMinterAddr.trim() || !ethers.isAddress(setMinterAddr.trim())) {
+      setSetMinterResult(isZh ? "❌ 请输入有效的地址" : "❌ Enter a valid address");
+      return;
+    }
+    setSetMinterLoading(true); setSetMinterResult(null);
+    try {
+      const c = getContracts(signer);
+      const tx = await c.catNFT.setAuthorizedMinter(setMinterAddr.trim(), setMinterStatus);
+      await (tx as ethers.ContractTransactionResponse).wait();
+      const action = setMinterStatus ? (isZh ? "授权" : "authorized") : (isZh ? "撤销" : "revoked");
+      setSetMinterResult(isZh ? `✅ ${setMinterAddr.slice(0,10)}... 已${action}为 Minter` : `✅ ${setMinterAddr.slice(0,10)}... ${action} as minter`);
+      setSetMinterAddr("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setSetMinterResult(isZh ? `❌ 失败：${msg.slice(0,80)}` : `❌ Failed: ${msg.slice(0,80)}`);
+    } finally { setSetMinterLoading(false); }
   };
 
   useEffect(() => { loadShelters(); loadVaultBalance(); loadSeries(); loadEquipTemplates(); }, [loadShelters, loadVaultBalance, loadSeries, loadEquipTemplates]);
@@ -658,24 +731,109 @@ export function AdminPage() {
 
             {/* 添加新系列 */}
             {isOwner && (
-              <div className="p-4 rounded-xl" style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.15)" }}>
-                <p className="text-xs font-bold mb-3" style={{ color: "#a855f7" }}>＋ {isZh ? "添加新系列（仅 Owner）" : "Add New Series (Owner only)"}</p>
-                <div className="space-y-2">
+              <div className="p-5 rounded-2xl" style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.18)" }}>
+                <p className="text-xs font-bold mb-4" style={{ color: "#a855f7" }}>＋ {isZh ? "添加新收藏系列（仅 Owner）" : "Add New Collection Series (Owner only)"}</p>
+
+                {/* 系列名称 */}
+                <div className="mb-3">
+                  <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>
+                    {isZh ? "系列名称" : "Series Name"} <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
                   <input value={addSeriesName} onChange={e => setAddSeriesName(e.target.value)}
-                    placeholder={isZh ? "系列名称（如：Summer 2025）" : "Series name (e.g. Summer 2025)"}
-                    className="w-full px-3 py-2 rounded-xl outline-none text-sm"
-                    style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }} />
-                  <input value={addSeriesUri} onChange={e => setAddSeriesUri(e.target.value)}
-                    placeholder={isZh ? "元数据 URI（可选，如：ipfs://...）" : "Metadata URI (optional, e.g. ipfs://...)"}
-                    className="w-full px-3 py-2 rounded-xl outline-none text-sm font-mono"
+                    placeholder={isZh ? "如：Summer 2025 / Genesis Collection" : "e.g. Summer 2025 / Genesis Collection"}
+                    className="w-full px-3 py-2.5 rounded-xl outline-none text-sm"
                     style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }} />
                 </div>
+
+                {/* IPFS URI 输入 + 预览 */}
+                <div className="mb-3">
+                  <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>
+                    {isZh ? "NFT 元数据 URI（IPFS）" : "NFT Metadata URI (IPFS)"} <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <p className="text-xs mb-2" style={{ color: "#94a3b8" }}>
+                    {isZh
+                      ? "将元数据 JSON 上传到 IPFS 后，把 ipfs://... 或 https://ipfs.io/ipfs/... 地址粘贴到此处。元数据格式：{ name, image, description }"
+                      : "Upload your metadata JSON to IPFS, then paste the ipfs://... or https://ipfs.io/ipfs/... URI here. Format: { name, image, description }"}
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      value={addSeriesUri}
+                      onChange={e => { setAddSeriesUri(e.target.value); setSeriesUriPreview(null); setSeriesUriError(null); }}
+                      placeholder="ipfs://Qm... 或 https://ipfs.io/ipfs/..."
+                      className="flex-1 px-3 py-2.5 rounded-xl outline-none text-xs font-mono"
+                      style={{ background: "rgba(168,85,247,0.05)", border: `1px solid ${seriesUriPreview ? "rgba(22,163,74,0.4)" : seriesUriError ? "rgba(220,38,38,0.4)" : "rgba(168,85,247,0.25)"}`, color: "#7c3aed" }}
+                    />
+                    <button
+                      onClick={() => previewSeriesUri(addSeriesUri)}
+                      disabled={seriesUriPreviewing || !addSeriesUri.trim()}
+                      className="px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 flex-shrink-0"
+                      style={{
+                        background: "rgba(168,85,247,0.12)", color: "#a855f7",
+                        border: "1px solid rgba(168,85,247,0.3)",
+                        cursor: (!addSeriesUri.trim() || seriesUriPreviewing) ? "default" : "pointer",
+                        opacity: (!addSeriesUri.trim() || seriesUriPreviewing) ? 0.5 : 1,
+                      }}>
+                      {seriesUriPreviewing ? <Loader2 size={12} className="animate-spin" /> : <span style={{ fontSize: 14 }}>🔍</span>}
+                      {isZh ? "预览" : "Preview"}
+                    </button>
+                  </div>
+
+                  {/* URI 错误 */}
+                  {seriesUriError && (
+                    <p className="text-xs mt-1.5 font-semibold" style={{ color: "#dc2626" }}>{seriesUriError}</p>
+                  )}
+
+                  {/* URI 预览卡片 */}
+                  {seriesUriPreview && (
+                    <div className="mt-3 p-3 rounded-xl flex items-center gap-3"
+                      style={{ background: "rgba(22,163,74,0.06)", border: "1px solid rgba(22,163,74,0.2)" }}>
+                      {seriesUriPreview.image ? (
+                        <img
+                          src={seriesUriPreview.image}
+                          alt={seriesUriPreview.name}
+                          className="rounded-lg object-cover flex-shrink-0"
+                          style={{ width: 64, height: 64, border: "1px solid rgba(168,85,247,0.2)" }}
+                          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : (
+                        <div className="rounded-lg flex items-center justify-center flex-shrink-0 text-2xl"
+                          style={{ width: 64, height: 64, background: "rgba(168,85,247,0.1)", border: "1px dashed rgba(168,85,247,0.3)" }}>🖼️</div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <CheckCircle size={12} color="#16a34a" />
+                          <span className="text-xs font-bold" style={{ color: "#16a34a" }}>{isZh ? "元数据读取成功" : "Metadata fetched"}</span>
+                        </div>
+                        {seriesUriPreview.name && (
+                          <p className="text-sm font-bold truncate" style={{ color: "#92400e" }}>{seriesUriPreview.name}</p>
+                        )}
+                        {seriesUriPreview.description && (
+                          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "#b45309" }}>{seriesUriPreview.description}</p>
+                        )}
+                        {!seriesUriPreview.image && (
+                          <p className="text-xs mt-0.5" style={{ color: "#d97706" }}>
+                            ⚠️ {isZh ? "未找到 image 字段" : "No image field found"}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {seriesResult && (
-                  <p className="text-xs mt-2 font-semibold" style={{ color: seriesResult.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{seriesResult}</p>
+                  <p className="text-xs mb-3 font-semibold" style={{ color: seriesResult.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{seriesResult}</p>
                 )}
-                <button onClick={handleAddSeries} disabled={addSeriesLoading || !addSeriesName.trim()}
-                  className="mt-3 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white"
-                  style={{ background: (!addSeriesName.trim() || addSeriesLoading) ? "rgba(168,85,247,0.3)" : "linear-gradient(135deg,#a855f7,#9333ea)", cursor: (!addSeriesName.trim() || addSeriesLoading) ? "default" : "pointer", opacity: addSeriesLoading ? 0.7 : 1 }}>
+
+                <button
+                  onClick={handleAddSeries}
+                  disabled={addSeriesLoading || !addSeriesName.trim() || !addSeriesUri.trim()}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white"
+                  style={{
+                    background: (!addSeriesName.trim() || !addSeriesUri.trim() || addSeriesLoading) ? "rgba(168,85,247,0.3)" : "linear-gradient(135deg,#a855f7,#9333ea)",
+                    cursor: (!addSeriesName.trim() || !addSeriesUri.trim() || addSeriesLoading) ? "default" : "pointer",
+                    opacity: addSeriesLoading ? 0.7 : 1,
+                    boxShadow: (!addSeriesName.trim() || !addSeriesUri.trim() || addSeriesLoading) ? "none" : "0 4px 14px rgba(168,85,247,0.3)",
+                  }}>
                   {addSeriesLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                   {isZh ? "添加系列" : "Add Series"}
                 </button>
@@ -747,7 +905,17 @@ export function AdminPage() {
               const RARITY_SEL = isZh ? ["普通","精良","稀有","传说"] : ["Common","Fine","Rare","Legendary"];
               return (
                 <div className="p-4 rounded-xl" style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.15)" }}>
-                  <p className="text-xs font-bold mb-3" style={{ color: "#c2410c" }}>＋ {isZh ? "添加新模板" : "Add New Template"}</p>
+                  <div className="flex items-start gap-2 mb-4 p-3 rounded-xl" style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.15)" }}>
+                    <span className="text-base flex-shrink-0">💡</span>
+                    <div>
+                      <p className="text-xs font-bold mb-0.5" style={{ color: "#c2410c" }}>＋ {isZh ? "添加新模板" : "Add New Template"}</p>
+                      <p className="text-xs leading-relaxed" style={{ color: "#b45309" }}>
+                        {isZh
+                          ? "装备 NFT 的图片/元数据 URI 来自「收藏系列」，请先在上方添加系列并填写 IPFS URI，再在此处添加装备模板。抽卡时系统会随机选取活跃系列作为 URI。"
+                          : "Equipment NFT image/URI comes from Collection Series above. Add a series with its IPFS URI first, then add templates here. The system picks a random active series URI when minting."}
+                      </p>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 gap-2 mb-2">
                     <div>
                       <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>{isZh ? "槽位" : "Slot"}</label>
@@ -805,8 +973,100 @@ export function AdminPage() {
               );
             })()}
           </div>
-        </div>
 
+          {/* ── 合约配置 ── */}
+          {isOwner && (
+            <div className="mt-6 p-5 rounded-2xl" style={{ background: "rgba(220,38,38,0.04)", border: "1px solid rgba(220,38,38,0.18)" }}>
+              <div className="flex items-center gap-2 mb-5">
+                <span className="text-base">🔧</span>
+                <h3 className="font-bold" style={{ color: "#dc2626" }}>{isZh ? "合约配置（仅 Owner）" : "Contract Config (Owner only)"}</h3>
+              </div>
+
+              {/* EquipmentNFT.setGameContract */}
+              <div className="mb-5">
+                <label className="text-xs font-bold block mb-1" style={{ color: "#b45309" }}>
+                  EquipmentNFT → <code className="px-1 py-0.5 rounded" style={{ background: "rgba(249,115,22,0.08)", fontSize: 11 }}>setGameContract(address)</code>
+                </label>
+                <p className="text-xs mb-2" style={{ color: "#94a3b8" }}>
+                  {isZh ? "将 GameContract 地址写入 EquipmentNFT，授权其调用 mintEquipment" : "Authorize GameContract to call mintEquipment on EquipmentNFT"}
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={setGameContractAddr}
+                    onChange={e => { setSetGameContractAddr(e.target.value); setSetGameContractResult(null); }}
+                    placeholder="GameContract 0x..."
+                    className="flex-1 px-3 py-2 rounded-xl outline-none text-xs font-mono"
+                    style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }}
+                  />
+                  <button
+                    onClick={handleSetGameContract}
+                    disabled={setGameContractLoading || !setGameContractAddr.trim()}
+                    className="px-3 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 flex-shrink-0"
+                    style={{
+                      background: (setGameContractLoading || !setGameContractAddr.trim()) ? "rgba(249,115,22,0.3)" : "linear-gradient(135deg,#F97316,#ea580c)",
+                      cursor: (setGameContractLoading || !setGameContractAddr.trim()) ? "default" : "pointer",
+                    }}>
+                    {setGameContractLoading ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                    {isZh ? "写入" : "Set"}
+                  </button>
+                </div>
+                {setGameContractResult && (
+                  <p className="text-xs mt-1.5 font-semibold" style={{ color: setGameContractResult.startsWith("✅") ? "#16a34a" : "#dc2626" }}>
+                    {setGameContractResult}
+                  </p>
+                )}
+              </div>
+
+              {/* CatNFT.setAuthorizedMinter */}
+              <div>
+                <label className="text-xs font-bold block mb-1" style={{ color: "#b45309" }}>
+                  CatNFT → <code className="px-1 py-0.5 rounded" style={{ background: "rgba(249,115,22,0.08)", fontSize: 11 }}>setAuthorizedMinter(address, bool)</code>
+                </label>
+                <p className="text-xs mb-2" style={{ color: "#94a3b8" }}>
+                  {isZh ? "授权或撤销某地址调用 CatNFT 的 mint 函数（通常用于 GameContract / DonationVault）" : "Grant or revoke an address permission to mint CatNFTs (e.g. GameContract / DonationVault)"}
+                </p>
+                <div className="flex gap-2 mb-1.5">
+                  <input
+                    value={setMinterAddr}
+                    onChange={e => { setSetMinterAddr(e.target.value); setSetMinterResult(null); }}
+                    placeholder="Minter address 0x..."
+                    className="flex-1 px-3 py-2 rounded-xl outline-none text-xs font-mono"
+                    style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }}
+                  />
+                  <button
+                    onClick={() => setSetMinterStatus(s => !s)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 flex-shrink-0"
+                    style={{
+                      background: setMinterStatus ? "rgba(22,163,74,0.1)" : "rgba(220,38,38,0.08)",
+                      color: setMinterStatus ? "#16a34a" : "#dc2626",
+                      border: `1px solid ${setMinterStatus ? "rgba(22,163,74,0.25)" : "rgba(220,38,38,0.2)"}`,
+                      cursor: "pointer",
+                    }}>
+                    {setMinterStatus ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                    {setMinterStatus ? (isZh ? "授权" : "Grant") : (isZh ? "撤销" : "Revoke")}
+                  </button>
+                  <button
+                    onClick={handleSetMinter}
+                    disabled={setMinterLoading || !setMinterAddr.trim()}
+                    className="px-3 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 flex-shrink-0"
+                    style={{
+                      background: (setMinterLoading || !setMinterAddr.trim()) ? "rgba(249,115,22,0.3)" : "linear-gradient(135deg,#F97316,#ea580c)",
+                      cursor: (setMinterLoading || !setMinterAddr.trim()) ? "default" : "pointer",
+                    }}>
+                    {setMinterLoading ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                    {isZh ? "执行" : "Apply"}
+                  </button>
+                </div>
+                {setMinterResult && (
+                  <p className="text-xs mt-1.5 font-semibold" style={{ color: setMinterResult.startsWith("✅") ? "#16a34a" : "#dc2626" }}>
+                    {setMinterResult}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+        </div>
       </div>
     </div>
   );
