@@ -79,6 +79,29 @@ export function AdminPage() {
   const [setMinterLoading,       setSetMinterLoading]       = useState(false);
   const [setMinterResult,        setSetMinterResult]        = useState<string | null>(null);
 
+  // ── 机构 Tab 筛选 ──
+  const [shelterTab, setShelterTab] = useState<"all" | "pending" | "approved">("all");
+
+  // ── 全家福 Season URI 更新 ──
+  const [seasonMode,       setSeasonMode]       = useState<"advance" | "update">("advance");
+  const [seasonNewUri,     setSeasonNewUri]      = useState("");
+  const [seasonUpdateNum,  setSeasonUpdateNum]   = useState("");
+  const [seasonLoading,    setSeasonLoading]     = useState(false);
+  const [seasonResult,     setSeasonResult]      = useState<string | null>(null);
+
+  // ── 追加 Collection Series URI ──
+  const [appendSeriesId,     setAppendSeriesId]     = useState("");
+  const [appendSeriesUri,    setAppendSeriesUri]     = useState("");
+  const [appendSeriesLoading, setAppendSeriesLoading] = useState(false);
+  const [appendSeriesResult,  setAppendSeriesResult]  = useState<string | null>(null);
+
+  // ── 装备 NFT URI 设置 ──
+  const [equipUriSlot,    setEquipUriSlot]    = useState("0");
+  const [equipUriRarity,  setEquipUriRarity]  = useState("0");
+  const [equipUriValue,   setEquipUriValue]   = useState("");
+  const [equipUriLoading, setEquipUriLoading] = useState(false);
+  const [equipUriResult,  setEquipUriResult]  = useState<string | null>(null);
+
   // localStorage key for caching scanned block range
   // key 包含合约地址，合约重部署后自动失效
   const CACHE_KEY = "purrchain_shelter_addrs_" + ADDRESSES.catRegistry.slice(2, 10).toLowerCase();
@@ -442,12 +465,68 @@ export function AdminPage() {
     return             { text: isZh?"已拒绝":"Rejected", color:"#dc2626", bg:"rgba(220,38,38,0.1)",  border:"rgba(220,38,38,0.3)"  };
   };
 
+  const handleUpdateSeasonURI = async () => {
+    if (!signer || !isAdmin) { setSeasonResult(isZh ? "请先连接管理员钱包" : "Connect admin wallet"); return; }
+    if (!seasonNewUri.trim()) { setSeasonResult(isZh ? "请填写 URI" : "URI required"); return; }
+    setSeasonLoading(true); setSeasonResult(null);
+    try {
+      const abi = seasonMode === "advance"
+        ? ["function advanceSeason(string calldata _uri) external"]
+        : ["function setSeasonURI(uint8 _season, string calldata _uri) external"];
+      const contract = new ethers.Contract(ADDRESSES.catNFT, abi, signer);
+      const tx = seasonMode === "advance"
+        ? await contract.advanceSeason(seasonNewUri.trim())
+        : await contract.setSeasonURI(Number(seasonUpdateNum), seasonNewUri.trim());
+      await tx.wait();
+      setSeasonResult(isZh ? "✅ 全家福 URI 已更新" : "✅ Season URI updated");
+      setSeasonNewUri(""); setSeasonUpdateNum("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setSeasonResult(`❌ ${msg.slice(0, 80)}`);
+    } finally { setSeasonLoading(false); }
+  };
+
+  const handleAppendSeriesURI = async () => {
+    if (!signer || !isAdmin) { setAppendSeriesResult(isZh ? "请先连接管理员钱包" : "Connect admin wallet"); return; }
+    if (!appendSeriesUri.trim() || appendSeriesId === "") { setAppendSeriesResult(isZh ? "请填写系列 ID 和 URI" : "Series ID and URI required"); return; }
+    setAppendSeriesLoading(true); setAppendSeriesResult(null);
+    try {
+      const contract = new ethers.Contract(ADDRESSES.catNFT,
+        ["function addCollectionSeriesURI(uint32 _seriesId, string calldata _uri) external"], signer);
+      const tx = await contract.addCollectionSeriesURI(Number(appendSeriesId), appendSeriesUri.trim());
+      await tx.wait();
+      setAppendSeriesResult(isZh ? "✅ URI 已追加到系列" : "✅ URI appended to series");
+      setAppendSeriesUri(""); loadSeries();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setAppendSeriesResult(`❌ ${msg.slice(0, 80)}`);
+    } finally { setAppendSeriesLoading(false); }
+  };
+
+  const handleSetEquipURI = async () => {
+    if (!signer || !isAdmin) { setEquipUriResult(isZh ? "请先连接管理员钱包" : "Connect admin wallet"); return; }
+    if (!equipUriValue.trim()) { setEquipUriResult(isZh ? "请填写 URI" : "URI required"); return; }
+    setEquipUriLoading(true); setEquipUriResult(null);
+    try {
+      const contract = new ethers.Contract(ADDRESSES.equipmentNFT,
+        ["function setSlotRarityURI(uint8 _slot, uint8 _rarity, string calldata _uri) external"], signer);
+      const tx = await contract.setSlotRarityURI(Number(equipUriSlot), Number(equipUriRarity), equipUriValue.trim());
+      await tx.wait();
+      setEquipUriResult(isZh ? "✅ 装备 URI 已更新" : "✅ Equipment URI updated");
+      setEquipUriValue("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("user rejected")) setEquipUriResult(`❌ ${msg.slice(0, 80)}`);
+    } finally { setEquipUriLoading(false); }
+  };
+
   const updateRow  = (i: number, k: keyof ShareRow, v: string) => setShareRows(rows => rows.map((r, idx) => idx===i ? {...r,[k]:v} : r));
   const addRow     = () => setShareRows(r => [...r, { addr:"", share:"" }]);
   const removeRow  = (i: number) => setShareRows(r => r.filter((_,idx) => idx !== i));
   const totalShare = shareRows.reduce((s, r) => s + (parseInt(r.share)||0), 0);
   const pending    = shelters.filter(s => s.status === 0);
   const approved   = shelters.filter(s => s.status === 1);
+  const displayedShelters = shelterTab === "pending" ? pending : shelterTab === "approved" ? approved : shelters;
 
   return (
     <div className="min-h-screen pt-20" style={{ background: "#fffbf5" }}>
@@ -532,45 +611,49 @@ export function AdminPage() {
         {error   && <div className="p-4 rounded-xl mb-4 flex items-center gap-2" style={{ background:"rgba(220,38,38,0.08)", border:"1px solid rgba(220,38,38,0.2)" }}><XCircle size={16} color="#dc2626" /><p className="text-sm" style={{ color:"#dc2626" }}>{error}</p></div>}
         {success && <div className="p-4 rounded-xl mb-4 flex items-center gap-2" style={{ background:"rgba(22,163,74,0.08)", border:"1px solid rgba(22,163,74,0.2)" }}><CheckCircle size={16} color="#16a34a" /><p className="text-sm" style={{ color:"#16a34a" }}>{success}</p></div>}
 
-        {/* 统计 */}
+        {/* 统计 / Tab 筛选 */}
         <div className="grid grid-cols-3 gap-4 mb-8">
           {[
-            { label:isZh?"待审批":"Pending",  count:pending.length,  color:"#d97706" },
-            { label:isZh?"已审批":"Approved", count:approved.length, color:"#16a34a" },
-            { label:isZh?"已通过机构":"Approved Total", count:approved.length, color:"#F97316" },
+            { key: "all"      as const, label: isZh?"全部":"All",      count: shelters.length, color: "#F97316" },
+            { key: "pending"  as const, label: isZh?"待审批":"Pending", count: pending.length,  color: "#d97706" },
+            { key: "approved" as const, label: isZh?"已审批":"Approved",count: approved.length, color: "#16a34a" },
           ].map(item => (
-            <div key={item.label} className="p-4 rounded-2xl text-center"
-              style={{ background:"#fff9f5", border:"1px solid rgba(249,115,22,0.1)" }}>
-              <div className="text-3xl font-black mb-1" style={{ color:item.color, fontFamily:"'Space Grotesk', sans-serif" }}>{item.count}</div>
-              <div className="text-xs font-medium" style={{ color:"#b45309" }}>{item.label}</div>
-            </div>
+            <button key={item.key} onClick={() => setShelterTab(item.key)}
+              className="p-4 rounded-2xl text-center transition-all"
+              style={{
+                background: shelterTab === item.key ? `${item.color}15` : "#fff9f5",
+                border: shelterTab === item.key ? `2px solid ${item.color}50` : "1px solid rgba(249,115,22,0.1)",
+                cursor: "pointer",
+                transform: shelterTab === item.key ? "scale(1.03)" : "scale(1)",
+                boxShadow: shelterTab === item.key ? `0 4px 16px ${item.color}20` : "none",
+              }}>
+              <div className="text-3xl font-black mb-1" style={{ color: item.color, fontFamily: "'Space Grotesk', sans-serif" }}>{item.count}</div>
+              <div className="text-xs font-medium" style={{ color: "#b45309" }}>{item.label}</div>
+            </button>
           ))}
         </div>
 
-        {/* 待审批 */}
-        {pending.length > 0 && (
+        {/* 机构列表（按 tab 筛选） */}
+        {displayedShelters.length > 0 && (
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-4">
-              <Clock size={16} color="#d97706" />
-              <h2 className="text-lg font-bold" style={{ color:"#92400e" }}>{isZh?"待审批机构":"Pending Shelters"}</h2>
-              <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background:"rgba(217,119,6,0.12)", color:"#d97706", border:"1px solid rgba(217,119,6,0.25)" }}>{pending.length}</span>
+              {shelterTab === "pending"  && <Clock size={16} color="#d97706" />}
+              {shelterTab === "approved" && <CheckCircle size={16} color="#16a34a" />}
+              {shelterTab === "all"      && <ShieldCheck size={16} color="#F97316" />}
+              <h2 className="text-lg font-bold" style={{ color: "#92400e" }}>
+                {shelterTab === "pending"  ? (isZh ? "待审批机构" : "Pending Shelters")  :
+                 shelterTab === "approved" ? (isZh ? "已审批机构" : "Approved Shelters") :
+                                             (isZh ? "所有机构"   : "All Shelters")}
+              </h2>
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold"
+                style={{ background: "rgba(249,115,22,0.12)", color: "#F97316", border: "1px solid rgba(249,115,22,0.25)" }}>
+                {displayedShelters.length}
+              </span>
             </div>
             <div className="flex flex-col gap-3">
-              {pending.map(s => <ShelterCard key={s.address} shelter={s} statusStyle={statusStyle} isAdmin={isAdmin} actionLoading={actionLoading} onVote={voteShelter} onClose={voteCloseShelter} isZh={isZh} />)}
-            </div>
-          </div>
-        )}
-
-        {/* 已审批 */}
-        {approved.length > 0 && (
-          <div className="mb-8">
-            <div className="flex items-center gap-2 mb-4">
-              <CheckCircle size={16} color="#16a34a" />
-              <h2 className="text-lg font-bold" style={{ color:"#92400e" }}>{isZh?"已审批机构":"Approved Shelters"}</h2>
-              <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background:"rgba(22,163,74,0.12)", color:"#16a34a", border:"1px solid rgba(22,163,74,0.25)" }}>{approved.length}</span>
-            </div>
-            <div className="flex flex-col gap-3">
-              {approved.map(s => <ShelterCard key={s.address} shelter={s} statusStyle={statusStyle} isAdmin={isAdmin} actionLoading={actionLoading} onVote={voteShelter} onClose={voteCloseShelter} isZh={isZh} />)}
+              {displayedShelters.map(s => (
+                <ShelterCard key={s.address} shelter={s} statusStyle={statusStyle} isAdmin={isAdmin} actionLoading={actionLoading} onVote={voteShelter} onClose={voteCloseShelter} isZh={isZh} />
+              ))}
             </div>
           </div>
         )}
@@ -973,6 +1056,200 @@ export function AdminPage() {
               );
             })()}
           </div>
+
+          {/* ── 全家福 Season URI 更新 ── */}
+          {isAdmin && (
+            <div className="mt-8 p-5 rounded-2xl" style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.18)" }}>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-base">🖼️</span>
+                <h3 className="font-bold" style={{ color: "#92400e" }}>{isZh ? "全家福 NFT URI 管理" : "Family Portrait URI"}</h3>
+              </div>
+              <p className="text-xs mb-4" style={{ color: "#b45309" }}>
+                {isZh
+                  ? "「推进季度」会将 currentSeason +1 并写入新 URI，之后新用户领取新季图。「更新指定季」仅覆盖已有季度的 URI，season 编号从 1 开始。"
+                  : "Advance creates a new season (+1) with the new URI. Update overwrites a specific existing season's URI."}
+              </p>
+
+              {/* 模式切换 */}
+              <div className="flex gap-2 mb-4">
+                {(["advance", "update"] as const).map(mode => (
+                  <button key={mode} onClick={() => { setSeasonMode(mode); setSeasonResult(null); }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                    style={{
+                      background: seasonMode === mode ? "linear-gradient(135deg,#F97316,#fbbf24)" : "rgba(249,115,22,0.08)",
+                      color: seasonMode === mode ? "#fff" : "#c2410c",
+                      border: seasonMode === mode ? "none" : "1px solid rgba(249,115,22,0.2)",
+                      cursor: "pointer",
+                    }}>
+                    {mode === "advance" ? (isZh ? "推进季度" : "Advance Season") : (isZh ? "更新指定季" : "Update Season")}
+                  </button>
+                ))}
+              </div>
+
+              {seasonMode === "update" && (
+                <div className="mb-3">
+                  <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>
+                    {isZh ? "季度编号（如：1）" : "Season Number (e.g. 1)"}
+                  </label>
+                  <input value={seasonUpdateNum} onChange={e => setSeasonUpdateNum(e.target.value)}
+                    type="number" min="1" placeholder="1"
+                    className="w-full px-3 py-2.5 rounded-xl outline-none text-sm"
+                    style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }} />
+                </div>
+              )}
+
+              <div className="mb-3">
+                <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>
+                  {isZh ? "新 URI（ipfs://...）" : "New URI (ipfs://...)"} <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <input value={seasonNewUri} onChange={e => { setSeasonNewUri(e.target.value); setSeasonResult(null); }}
+                  placeholder="ipfs://..."
+                  className="w-full px-3 py-2.5 rounded-xl outline-none text-xs font-mono"
+                  style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }} />
+              </div>
+
+              {seasonResult && (
+                <p className="text-xs mb-3 font-semibold" style={{ color: seasonResult.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{seasonResult}</p>
+              )}
+
+              <button onClick={handleUpdateSeasonURI} disabled={seasonLoading || !seasonNewUri.trim() || (seasonMode === "update" && !seasonUpdateNum)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white"
+                style={{
+                  background: (seasonLoading || !seasonNewUri.trim()) ? "rgba(249,115,22,0.3)" : "linear-gradient(135deg,#F97316,#ea580c)",
+                  cursor: (seasonLoading || !seasonNewUri.trim()) ? "default" : "pointer",
+                  opacity: seasonLoading ? 0.7 : 1,
+                }}>
+                {seasonLoading ? <Loader2 size={14} className="animate-spin" /> : <span>🖼️</span>}
+                {seasonMode === "advance" ? (isZh ? "推进新季度" : "Advance Season") : (isZh ? "更新 URI" : "Update URI")}
+              </button>
+            </div>
+          )}
+
+          {/* ── 追加收藏系列 URI ── */}
+          {isAdmin && (
+            <div className="mt-6 p-5 rounded-2xl" style={{ background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.18)" }}>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-base">✦</span>
+                <h3 className="font-bold" style={{ color: "#92400e" }}>{isZh ? "追加收藏系列 URI" : "Append Collection Series URI"}</h3>
+              </div>
+              <p className="text-xs mb-4" style={{ color: "#b45309" }}>
+                {isZh
+                  ? "向已有收藏系列追加新的 NFT URI。同一系列可包含多个不同图，mint 时随机抽取。系列 ID 见上方系列列表。"
+                  : "Append a new NFT URI to an existing series. Each series can hold multiple URIs; one is picked at random when minting."}
+              </p>
+
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div>
+                  <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>
+                    {isZh ? "系列 ID" : "Series ID"} <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <input value={appendSeriesId} onChange={e => { setAppendSeriesId(e.target.value); setAppendSeriesResult(null); }}
+                    type="number" min="0" placeholder="0"
+                    className="w-full px-3 py-2.5 rounded-xl outline-none text-sm text-center"
+                    style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)", color: "#7c3aed" }} />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>
+                    {isZh ? "新 URI（ipfs://...）" : "New URI (ipfs://...)"} <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <input value={appendSeriesUri} onChange={e => { setAppendSeriesUri(e.target.value); setAppendSeriesResult(null); }}
+                    placeholder="ipfs://..."
+                    className="w-full px-3 py-2.5 rounded-xl outline-none text-xs font-mono"
+                    style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)", color: "#7c3aed" }} />
+                </div>
+              </div>
+
+              {appendSeriesResult && (
+                <p className="text-xs mb-3 font-semibold" style={{ color: appendSeriesResult.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{appendSeriesResult}</p>
+              )}
+
+              <button onClick={handleAppendSeriesURI} disabled={appendSeriesLoading || !appendSeriesUri.trim() || appendSeriesId === ""}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white"
+                style={{
+                  background: (appendSeriesLoading || !appendSeriesUri.trim() || appendSeriesId === "") ? "rgba(168,85,247,0.3)" : "linear-gradient(135deg,#a855f7,#9333ea)",
+                  cursor: (appendSeriesLoading || !appendSeriesUri.trim() || appendSeriesId === "") ? "default" : "pointer",
+                  opacity: appendSeriesLoading ? 0.7 : 1,
+                  boxShadow: (appendSeriesLoading || !appendSeriesUri.trim()) ? "none" : "0 4px 14px rgba(168,85,247,0.3)",
+                }}>
+                {appendSeriesLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                {isZh ? "追加 URI" : "Append URI"}
+              </button>
+            </div>
+          )}
+
+          {/* ── 装备 NFT URI 设置 ── */}
+          {isAdmin && (() => {
+            const SLOT_OPTS  = isZh ? ["⚔️ 武器", "🎒 背包", "👟 靴子"] : ["⚔️ Weapon", "🎒 Bag", "👟 Boots"];
+            const RARITY_OPTS = isZh ? ["普通", "精良", "稀有", "传说"] : ["Common", "Fine", "Rare", "Legendary"];
+            const RARITY_COLORS_OPT = ["#9CA3AF", "#34D399", "#60A5FA", "#FBBF24"];
+            return (
+              <div className="mt-6 p-5 rounded-2xl" style={{ background: "rgba(249,115,22,0.04)", border: "1px solid rgba(249,115,22,0.18)" }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <Sword size={15} color="#F97316" />
+                  <h3 className="font-bold" style={{ color: "#92400e" }}>{isZh ? "装备 NFT URI 设置" : "Equipment NFT URI"}</h3>
+                </div>
+                <p className="text-xs mb-4" style={{ color: "#b45309" }}>
+                  {isZh
+                    ? "按「槽位 × 稀有度」共 12 种组合，各设置一个 IPFS metadata URI。同槽同稀有度的装备 NFT 共用同一张图。"
+                    : "12 combinations (slot × rarity). All equipment NFTs of the same slot+rarity share one URI."}
+                </p>
+
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>{isZh ? "槽位" : "Slot"}</label>
+                    <select value={equipUriSlot} onChange={e => { setEquipUriSlot(e.target.value); setEquipUriResult(null); }}
+                      className="w-full px-3 py-2.5 rounded-xl outline-none text-sm"
+                      style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }}>
+                      {SLOT_OPTS.map((s, i) => <option key={i} value={i}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>{isZh ? "稀有度" : "Rarity"}</label>
+                    <select value={equipUriRarity} onChange={e => { setEquipUriRarity(e.target.value); setEquipUriResult(null); }}
+                      className="w-full px-3 py-2.5 rounded-xl outline-none text-sm"
+                      style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: RARITY_COLORS_OPT[Number(equipUriRarity)] }}>
+                      {RARITY_OPTS.map((r, i) => <option key={i} value={i} style={{ color: RARITY_COLORS_OPT[i] }}>{r}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="text-xs font-semibold block mb-1" style={{ color: "#b45309" }}>
+                    {isZh ? "IPFS Metadata URI" : "IPFS Metadata URI"} <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <input value={equipUriValue} onChange={e => { setEquipUriValue(e.target.value); setEquipUriResult(null); }}
+                    placeholder="ipfs://..."
+                    className="w-full px-3 py-2.5 rounded-xl outline-none text-xs font-mono"
+                    style={{ background: "rgba(249,115,22,0.05)", border: "1px solid rgba(249,115,22,0.18)", color: "#92400e" }} />
+                </div>
+
+                {/* 当前选中组合预览 */}
+                <div className="mb-3 px-3 py-2 rounded-xl flex items-center gap-2"
+                  style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.12)" }}>
+                  <span className="text-sm">{["⚔️","🎒","👟"][Number(equipUriSlot)]}</span>
+                  <span className="text-xs" style={{ color: "#b45309" }}>
+                    {SLOT_OPTS[Number(equipUriSlot)]} × <span style={{ color: RARITY_COLORS_OPT[Number(equipUriRarity)], fontWeight: 700 }}>{RARITY_OPTS[Number(equipUriRarity)]}</span>
+                    {isZh ? "　→　slot=" : "   slot="}{equipUriSlot}, rarity={equipUriRarity}
+                  </span>
+                </div>
+
+                {equipUriResult && (
+                  <p className="text-xs mb-3 font-semibold" style={{ color: equipUriResult.startsWith("✅") ? "#16a34a" : "#dc2626" }}>{equipUriResult}</p>
+                )}
+
+                <button onClick={handleSetEquipURI} disabled={equipUriLoading || !equipUriValue.trim()}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white"
+                  style={{
+                    background: (equipUriLoading || !equipUriValue.trim()) ? "rgba(249,115,22,0.3)" : "linear-gradient(135deg,#F97316,#ea580c)",
+                    cursor: (equipUriLoading || !equipUriValue.trim()) ? "default" : "pointer",
+                    opacity: equipUriLoading ? 0.7 : 1,
+                  }}>
+                  {equipUriLoading ? <Loader2 size={14} className="animate-spin" /> : <Sword size={14} />}
+                  {isZh ? "设置装备 URI" : "Set Equipment URI"}
+                </button>
+              </div>
+            );
+          })()}
 
           {/* ── 合约配置 ── */}
           {isOwner && (

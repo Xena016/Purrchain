@@ -5,13 +5,13 @@ import { ethers } from "ethers";
 // ============================================================
 
 export const ADDRESSES = {
-  catRegistry:   "0x93cC5116c36c23946A5D4a8648d2DA347aB55f21",
-  catNFT:        "0xcd30825Cd87c86Df851B87fdC857543FcA70caA9",
-  purrToken:     "0x590d75703D583fF057c0D589f7470e956Be8ed08",
-  equipmentNFT:  "0x80527f721940481ca3d75e7B57F196D1DC466c99",
-  gameContract:  "0x433434b57a7b45cD092A83DDfC7229192Be8a1B6",
-  donationVault: "0xD48037Df7eBaB0376CA97ee6861da507f44de94B",
-  adoptionVault: "0x16185c8393dcC3FEF7AE8943F7C84f61fC10C84E",
+  catRegistry:   "0x00eeC3763FAaA03A8d758C87E623Fb30318198bf",
+  catNFT:        "0xe0C9746BE2f5b09B130f21677E396Ced226372d9",
+  adoptionVault: "0x42b4E7784Daed2Ef06d9fC14D89Ee1d76454d08C",
+  donationVault: "0x809FDA8D72823E6781A9aCbfCb7eb2193B2b2E7f",
+  purrToken:     "0xE9F6089908CC054dF4095f227566F0b3696279B1",
+  equipmentNFT:  "0xE909bEe5bf2675967D720D586Dc749460163B149",
+  gameContract:  "0x5A7425Cd5a5A7Febe1E1AcA81b4B5285005750F0",
 } as const;
 
 // ============================================================

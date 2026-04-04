@@ -56,14 +56,6 @@ function saveLocalFrags(addr: string, n: number) {
   try { localStorage.setItem(FRAGS_KEY(addr), String(Math.max(0, n))); } catch {}
 }
 
-// ── 装备图片本地配置 helpers ──────────────────────────────
-function getEquipImage(name: string, rarity: number, slot: number): string {
-  try {
-    const key = `equip_img_${name}_${rarity}_${slot}`;
-    return localStorage.getItem(key) ?? "";
-  } catch { return ""; }
-}
-
 // ── IPFS helper ───────────────────────────────────────────
 function ipfsToHttp(uri: string) {
   if (!uri) return "";
@@ -82,9 +74,9 @@ const HUNT_CONFIG: Record<HuntDuration, {
   stamina: number;
   baseMaterials: [number, number]; // 链下估算范围，实际以链上为准
 }> = {
-  short:  { labelZh: "短途 2h", labelEn: "Short 2h",  durationIdx: 0, stamina: 1, baseMaterials: [1, 3]  },
-  medium: { labelZh: "中途 4h", labelEn: "Mid 4h",    durationIdx: 1, stamina: 2, baseMaterials: [3, 8]  },
-  long:   { labelZh: "长途 8h", labelEn: "Long 8h",   durationIdx: 2, stamina: 3, baseMaterials: [10, 20] },
+  short:  { labelZh: "短途 10s", labelEn: "Short 10s",  durationIdx: 0, stamina: 1, baseMaterials: [1, 3]  },
+  medium: { labelZh: "中途 20s", labelEn: "Mid 20s",    durationIdx: 1, stamina: 2, baseMaterials: [3, 8]  },
+  long:   { labelZh: "长途 40s", labelEn: "Long 40s",   durationIdx: 2, stamina: 3, baseMaterials: [10, 20] },
 };
 
 const ITEM_CONFIG: Record<HuntItem, {
@@ -425,6 +417,7 @@ export function Game() {
   const [equipments,    setEquipments]    = useState<EquipmentItem[]>([]);
   const [equipsLoading, setEquipsLoading] = useState(false);
   const [zoomedEquip,   setZoomedEquip]   = useState<EquipmentItem | null>(null);
+  const [zoomedCol,     setZoomedCol]     = useState<CollectionNFT | null>(null);
 
   // 当前猫身上已装备的 tokenId（从链上读）
   const [equippedSlots, setEquippedSlots] = useState<Record<number, number>>({});
@@ -466,7 +459,16 @@ export function Game() {
           if ((owner as string).toLowerCase() !== walletAddress.toLowerCase()) continue;
           const eq = await c.equipmentNFT.getEquipment(id);
           const e = eq as { slot: bigint; rarity: bigint; name: string; lore: string; rarityBonus: bigint; safetyBonus: bigint; carryBonus: bigint; speedBonus: bigint };
-          const image = getEquipImage(e.name, Number(e.rarity), Number(e.slot));
+          // 从链上 tokenURI 读取图片
+          let image = "";
+          try {
+            const uri = await c.equipmentNFT.tokenURI(id) as string;
+            if (uri) {
+              const res = await fetch(ipfsToHttp(uri), { signal: AbortSignal.timeout(6000) });
+              const json = await res.json() as { image?: string };
+              if (json.image) image = ipfsToHttp(json.image);
+            }
+          } catch { /* URI 未设置或网络失败，使用空图片，显示 slot 图标 */ }
           found.push({ tokenId: id, slot: Number(e.slot), rarity: Number(e.rarity), name: e.name, lore: e.lore, rarityBonus: Number(e.rarityBonus), carryBonus: Number(e.carryBonus), speedBonus: Number(e.speedBonus), image });
         } catch { /* skip */ }
       }
@@ -953,7 +955,9 @@ export function Game() {
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                   {collections.map(col => (
-                    <div key={col.tokenId} className="rounded-xl overflow-hidden"
+                    <div key={col.tokenId}
+                      className="rounded-xl overflow-hidden cursor-pointer transition-transform hover:scale-105"
+                      onClick={() => setZoomedCol(col)}
                       style={{ background: "white", border: "1px solid rgba(168,85,247,0.15)", boxShadow: "0 2px 8px rgba(168,85,247,0.06)" }}>
                       <div className="aspect-square" style={{ background: "rgba(168,85,247,0.04)" }}>
                         {col.image
@@ -1303,6 +1307,58 @@ export function Game() {
                 style={{ background: "linear-gradient(135deg,#F97316,#fbbf24)", cursor: "pointer", boxShadow: "0 4px 16px rgba(249,115,22,0.3)" }}>
                 {isZh ? "太棒了！继续冒险" : "Awesome! Keep exploring"}
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 收藏 NFT 放大弹窗 ── */}
+      <AnimatePresence>
+        {zoomedCol && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(12px)" }}
+            onClick={() => setZoomedCol(null)}>
+            <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ type: "spring", damping: 18 }}
+              className="w-full max-w-xs rounded-3xl overflow-hidden"
+              style={{ background: "#fffbf5", border: "2px solid rgba(168,85,247,0.3)", boxShadow: "0 20px 60px rgba(168,85,247,0.25)" }}
+              onClick={e => e.stopPropagation()}>
+              {/* 图片区 */}
+              <div className="aspect-square w-full" style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.08), rgba(168,85,247,0.15))" }}>
+                {zoomedCol.image
+                  ? <img src={zoomedCol.image} alt={zoomedCol.name} className="w-full h-full object-contain p-4" />
+                  : <div className="w-full h-full flex items-center justify-center text-8xl">🐾</div>}
+              </div>
+              {/* 信息区 */}
+              <div className="p-5">
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="font-black text-lg" style={{ color: "#92400e" }}>{zoomedCol.name}</h3>
+                  <button onClick={() => setZoomedCol(null)} className="p-1 rounded-lg flex-shrink-0 ml-2"
+                    style={{ background: "rgba(168,85,247,0.08)", color: "#7c3aed", cursor: "pointer" }}>
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="flex gap-2 mb-3 flex-wrap">
+                  <span className="text-xs px-2 py-1 rounded-full font-bold"
+                    style={{ background: "rgba(168,85,247,0.12)", color: "#7c3aed", border: "1px solid rgba(168,85,247,0.3)" }}>
+                    ✦ {isZh ? "收藏系列" : "Collection"}
+                  </span>
+                  <span className="text-xs px-2 py-1 rounded-full font-mono"
+                    style={{ background: "rgba(168,85,247,0.06)", color: "#a855f7" }}>
+                    #{zoomedCol.tokenId}
+                  </span>
+                  <span className="text-xs px-2 py-1 rounded-full"
+                    style={{ background: "rgba(249,115,22,0.06)", color: "#d97706" }}>
+                    {isZh ? "系列" : "Series"} {zoomedCol.seriesId}
+                  </span>
+                </div>
+                {zoomedCol.description && (
+                  <p className="text-xs leading-relaxed p-3 rounded-xl"
+                    style={{ color: "#b45309", background: "rgba(168,85,247,0.04)", border: "1px solid rgba(168,85,247,0.1)" }}>
+                    {zoomedCol.description}
+                  </p>
+                )}
+              </div>
             </motion.div>
           </div>
         )}
