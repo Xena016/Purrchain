@@ -1,11 +1,26 @@
+\# PurrChain 🐱
 
-  # 猫咪档案管理网页
 
-  This is a code bundle for 猫咪档案管理网页. The original project is available at https://www.figma.com/design/cVHxHRlQTLB4bgG7rHAjnh/%E7%8C%AB%E5%92%AA%E6%A1%A3%E6%A1%88%E7%AE%A1%E7%90%86%E7%BD%91%E9%A1%B5.
 
-  ## Running the code
+A Web3 cat adoption \& donation platform.
 
-  Run `npm i` to install the dependencies.
 
-  Run `npm run dev` to start the development server.
-  
+
+\## Description
+
+Users can adopt cats as NFTs and donate to support real shelters.
+
+
+
+\## Tech Stack
+
+\- Solidity
+
+\- React
+
+\- IPFS
+
+
+
+
+

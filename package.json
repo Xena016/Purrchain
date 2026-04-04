@@ -1,17 +1,23 @@
 {
-  "name": "@figma/my-make-file",
+  "name": "purrchain",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "type": "module",
+  "description": "PurrChain - Decentralized Cat Adoption Platform on Avalanche",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "compile": "hardhat compile",
+    "deploy:fuji": "hardhat run scripts/deploy.js --network fuji",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "node": "hardhat node"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
     "@mui/icons-material": "7.3.5",
     "@mui/material": "7.3.5",
+    "@openzeppelin/contracts": "^5.0.0",
     "@popperjs/core": "2.11.8",
     "@radix-ui/react-accordion": "1.2.3",
     "@radix-ui/react-alert-dialog": "1.1.6",
@@ -44,6 +50,7 @@
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
     "date-fns": "3.6.0",
+    "dotenv": "^16.4.0",
     "embla-carousel-react": "8.6.0",
     "ethers": "^6.16.0",
     "input-otp": "1.4.2",
@@ -66,8 +73,10 @@
     "vaul": "1.1.2"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
+    "hardhat": "^2.28.6",
     "tailwindcss": "4.1.12",
     "vite": "6.3.5"
   },
@@ -81,11 +90,6 @@
     },
     "react-dom": {
       "optional": true
-    }
-  },
-  "pnpm": {
-    "overrides": {
-      "vite": "6.3.5"
     }
   }
 }
