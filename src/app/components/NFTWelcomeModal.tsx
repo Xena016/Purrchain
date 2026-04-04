@@ -7,7 +7,8 @@ interface Props { onClose: () => void; }
 
 export function NFTWelcomeModal({ onClose }: Props) {
   const {
-    claimFamilyPortrait, claimWelcomeTokens,
+    claimAll,
+    claimWelcomeTokens,
     isConnected, connectWallet,
     nftClaimed, welcomeClaimed,
     isLoading, error, clearError,
@@ -48,11 +49,11 @@ export function NFTWelcomeModal({ onClose }: Props) {
     if (!isConnected) { await connectWallet(); return; }
     setClaiming(true); setLocalError(null); clearError();
     try {
-      if (!nftClaimed) {
-        await claimFamilyPortrait();
-        await new Promise(r => setTimeout(r, 500));
+      if (nftClaimed && welcomeClaimed) return;
+      // claimAll 内部处理两步，且直接从 receipt 拿 tokenId，不依赖 state 时序
+      if (!welcomeClaimed || !nftClaimed) {
+        await claimAll();
       }
-      if (!welcomeClaimed) await claimWelcomeTokens();
       setDone(true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";

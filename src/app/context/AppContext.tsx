@@ -35,6 +35,7 @@ interface AppContextType {
   // 链上操作
   claimFamilyPortrait: () => Promise<void>;
   claimWelcomeTokens: () => Promise<void>;
+  claimAll: () => Promise<void>;  // 一次完成全家福 + 20 PURR
   claimStarterCat: (realCatId: number) => Promise<void>;
   refreshBalance: () => Promise<void>;
 
@@ -201,9 +202,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setError(null);
       const c = getContracts(signer);
       const tx = await c.catNFT.claimFamilyPortrait();
-      await (tx as ethers.ContractTransactionResponse).wait();
+      const receipt = await (tx as ethers.ContractTransactionResponse).wait();
+      // 从 FamilyPortraitMinted 事件直接拿 tokenId，不依赖后续扫描
+      const iface = new ethers.Interface(["event FamilyPortraitMinted(uint256 indexed tokenId, address indexed to, uint8 season)"]);
+      let mintedTokenId: number | null = null;
+      for (const log of (receipt?.logs ?? [])) {
+        try {
+          const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
+          if (parsed?.name === "FamilyPortraitMinted") {
+            mintedTokenId = Number(parsed.args[0]);
+            break;
+          }
+        } catch { /* 其他事件，跳过 */ }
+      }
+      if (mintedTokenId !== null) setFamilyPortraitTokenId(mintedTokenId);
       setNftClaimed(true);
-      await loadUserState(walletAddress);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "领取失败";
       if (msg.includes("already claimed")) {
@@ -211,6 +224,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } else if (!msg.includes("user rejected")) {
         setError(`领取全家福 NFT 失败：${msg.slice(0, 80)}`);
       }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ── 一键领取全家福 NFT + 20 PURR ──────────────────────────
+  const claimAll = async () => {
+    if (!signer || !walletAddress) { setError("请先连接钱包"); return; }
+    setIsLoading(true); setError(null);
+    try {
+      const c = getContracts(signer);
+
+      // Step 1: 领全家福（如未领）
+      let tokenId = familyPortraitTokenId;
+      if (!nftClaimed) {
+        const tx = await c.catNFT.claimFamilyPortrait();
+        const receipt = await (tx as ethers.ContractTransactionResponse).wait();
+        const iface = new ethers.Interface(["event FamilyPortraitMinted(uint256 indexed tokenId, address indexed to, uint8 season)"]);
+        for (const log of (receipt?.logs ?? [])) {
+          try {
+            const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
+            if (parsed?.name === "FamilyPortraitMinted") {
+              tokenId = Number(parsed.args[0]);
+              break;
+            }
+          } catch { /* skip */ }
+        }
+        if (tokenId !== null) setFamilyPortraitTokenId(tokenId);
+        setNftClaimed(true);
+      }
+
+      // Step 2: 领代币（如未领，使用刚拿到的 tokenId）
+      if (!welcomeClaimed && tokenId !== null) {
+        const tx2 = await c.purrToken.claimWelcomeTokens(tokenId);
+        await (tx2 as ethers.ContractTransactionResponse).wait();
+        setWelcomeClaimed(true);
+        await refreshBalance();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "领取失败";
+      if (msg.includes("already claimed portrait")) setError("全家福 NFT 已领取过");
+      else if (msg.includes("already claimed")) setError("欢迎奖励已领取过");
+      else if (!msg.includes("user rejected")) setError(`领取失败：${msg.slice(0, 80)}`);
     } finally {
       setIsLoading(false);
     }
@@ -344,6 +400,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         starterCatId,
         claimFamilyPortrait,
         claimWelcomeTokens,
+        claimAll,
         claimStarterCat,
         refreshBalance,
         error,

@@ -426,53 +426,45 @@ export function Game() {
     if (!walletAddress) return;
     setEquipsLoading(true);
     try {
-      const c   = getReadonlyContracts();
-      const provider = new ethers.JsonRpcProvider("https://api.avax-test.network/ext/bc/C/rpc");
-      const balRaw   = await c.equipmentNFT.balanceOf(walletAddress);
-      const balance  = Number(balRaw);
-      if (balance === 0) { setEquipments([]); setEquipsLoading(false); return; }
+      const c = getReadonlyContracts();
 
-      // 用事件扫描代替逐 tokenId ownerOf（更快）
-      const sig    = ethers.id("EquipmentMinted(uint256,address,uint8,uint8)");
-      const latest = await provider.getBlockNumber();
-      const scanFrom = Math.max(0, latest - 200000);
-      const tokenIds: number[] = [];
-      for (let from = scanFrom; from <= latest; from += 2000) {
-        try {
-          const logs = await provider.getLogs({
-            address: ADDRESSES.equipmentNFT,
-            topics: [sig, null, "0x" + walletAddress.slice(2).toLowerCase().padStart(64, "0")],
-            fromBlock: from,
-            toBlock: Math.min(from + 1999, latest),
-          });
-          for (const log of logs) {
-            const id = parseInt(log.topics[1], 16);
-            tokenIds.push(id);
-          }
-        } catch { /* skip batch */ }
-      }
+      // 先检查余额，0 则直接结束，不扫链
+      const balRaw  = await c.equipmentNFT.balanceOf(walletAddress);
+      const balance = Number(balRaw);
+      if (balance === 0) { setEquipments([]); return; }
+
+      // 用 totalSupply 遍历（装备总量通常很小），比扫 200000 个区块快得多
+      const totalRaw = await c.equipmentNFT.totalSupply();
+      const total    = Number(totalRaw);
 
       const found: EquipmentItem[] = [];
-      for (const id of tokenIds) {
+      for (let id = 0; id < total; id++) {
         try {
           const owner = await c.equipmentNFT.ownerOf(id);
           if ((owner as string).toLowerCase() !== walletAddress.toLowerCase()) continue;
           const eq = await c.equipmentNFT.getEquipment(id);
           const e = eq as { slot: bigint; rarity: bigint; name: string; lore: string; rarityBonus: bigint; safetyBonus: bigint; carryBonus: bigint; speedBonus: bigint };
-          // 从链上 tokenURI 读取图片
-          let image = "";
-          try {
-            const uri = await c.equipmentNFT.tokenURI(id) as string;
-            if (uri) {
-              const res = await fetch(ipfsToHttp(uri), { signal: AbortSignal.timeout(6000) });
-              const json = await res.json() as { image?: string };
-              if (json.image) image = ipfsToHttp(json.image);
-            }
-          } catch { /* URI 未设置或网络失败，使用空图片，显示 slot 图标 */ }
-          found.push({ tokenId: id, slot: Number(e.slot), rarity: Number(e.rarity), name: e.name, lore: e.lore, rarityBonus: Number(e.rarityBonus), carryBonus: Number(e.carryBonus), speedBonus: Number(e.speedBonus), image });
-        } catch { /* skip */ }
+          // 先 push 无图片条目，让列表立即渲染，不阻塞
+          found.push({ tokenId: id, slot: Number(e.slot), rarity: Number(e.rarity), name: e.name, lore: e.lore, rarityBonus: Number(e.rarityBonus), carryBonus: Number(e.carryBonus), speedBonus: Number(e.speedBonus), image: "" });
+        } catch { /* token 已 burn 或其他错误，跳过 */ }
       }
       setEquipments(found);
+
+      // 图片异步加载，不阻塞列表显示
+      found.forEach(async (eq, idx) => {
+        try {
+          const uri = await c.equipmentNFT.tokenURI(eq.tokenId) as string;
+          if (!uri) return;
+          const res  = await fetch(ipfsToHttp(uri), { signal: AbortSignal.timeout(8000) });
+          const json = await res.json() as { image?: string };
+          if (json.image) {
+            setEquipments(prev => prev.map((item, i) =>
+              i === idx ? { ...item, image: ipfsToHttp(json.image!) } : item
+            ));
+          }
+        } catch { /* URI 未设置或网络失败，显示 slot 图标占位 */ }
+      });
+
     } catch { /* ignore */ }
     finally { setEquipsLoading(false); }
   }, [walletAddress]);

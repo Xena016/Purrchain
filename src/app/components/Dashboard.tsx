@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 import { useApp } from "../context/AppContext";
 import { NFTWelcomeModal } from "./NFTWelcomeModal";
@@ -16,9 +16,17 @@ const GENDER_LABEL = { male: "♂ 公猫", female: "♀ 母猫" };
 export function Dashboard() {
   const { nftClaimed, isConnected } = useApp();
   const navigate = useNavigate();
-  const [showModal, setShowModal] = useState(!nftClaimed && isConnected);
+  // 初始不显示，等钱包连接后再判断是否弹出
+  const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+
+  // 钱包连接后，若未领取全家福则自动弹窗
+  useEffect(() => {
+    if (isConnected && !nftClaimed) {
+      setShowModal(true);
+    }
+  }, [isConnected, nftClaimed]);
 
   const filtered = cats.filter(cat => {
     const matchSearch = cat.name.includes(search) || cat.breed.includes(search) || cat.shelter.includes(search);
