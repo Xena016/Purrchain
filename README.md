@@ -19,7 +19,7 @@ All funds are 100% transparent and traceable — donations go directly to shelte
 
 ## 🚀 Try It Now
 
-- **Testnet Demo**：[PurrChain Demo](https://www-6-5-hackathon-tf7v.vercel.app/)
+- **Testnet Demo**：[PurrChain Demo](https://purrchain.vercel.app/)
 - **View All Contracts**：[Snowtrace Testnet Explorer](https://testnet.snowtrace.io) (search the contract addresses below)
 - **Get Test AVAX**：[Avalanche Fuji Faucet](https://build.avax.network/console/primary-network/faucet)
 
